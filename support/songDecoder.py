@@ -56,7 +56,7 @@ valid_data = test_data
 SRC.build_vocab(train_data, min_freq = 2)
 TRG.build_vocab(train_data, min_freq = 2)
 
-print(train_data)
+#print(train_data)
 
 """Finally, we define the device and the data iterator."""
 
