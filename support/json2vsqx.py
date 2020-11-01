@@ -1,4 +1,8 @@
 # -*- coding: utf-8 -*-
+
+# Original code was retrieved from here:
+# https://github.com/KentoW/json2vsqx
+
 import xml.dom.minidom
 import json
 import sys
