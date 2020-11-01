@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 # Example command:
-# python3 vocaloid_music_pipeline.py --seed inputs/noteSeed.txt
+# python3 main.py --seed inputs/noteSeed.txt
 
 import numpy as np
 import fugashi
