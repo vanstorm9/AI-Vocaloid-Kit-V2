@@ -1,4 +1,8 @@
 # -*- coding: utf-8 -*-
+
+# Example command:
+# python3 vocaloid_music_pipeline.py --seed inputs/noteSeed.txt
+
 import numpy as np
 import fugashi
 import os
@@ -24,17 +28,45 @@ from support.parsingHelper import *
 import torch
 import support.songDecoder as songDecoder
 import random
+import argparse
 
 outputDir = './outputs/'
 
 
-'''
-path = PurePath(vsqxPath)
-vsqx = xml.dom.minidom.parse(str(path))
-TEMPO = int(vsqx.getElementsByTagName('tempo')[0].childNodes[1].firstChild.data[:-2])
-mf = MIDIFile(len(vsqx.getElementsByTagName('vsTrack')), removeDuplicates=False)
-'''
+
+
+parser = argparse.ArgumentParser(description='Commands for the vocaloid generator')
+parser.add_argument('--seed', dest="seed",action="store",default=None,
+                   help='Use beginning notes to initalize melody generation')
+
+args = parser.parse_args()
+
+seedNotePath = args.seed
+
+
+
+
+# We feed in a text file that contains starter notes
+
+mainList = []
+
+if seedNotePath is not None:
+
+  try:
+    assert os.path.exists(seedNotePath)
+  except:
+    print("The path to the file contianing inital notes, represented as arguument --seed, does not exist")
+    raise
+
+  with open(seedNotePath,"r") as noteSeedHandle:
+    for line in noteSeedHandle:
+      mainList.append(line)
+
+
+
 time = 0
+#mainList = ['n63/d150', 'n65/d30', 'n65/d90', 'n65/d30', 'n65/d30', 'n64/d300', 'n64/d150', 'n64/d60']
+
 
 """Now we proceed to generate lyrics"""
 
@@ -226,8 +258,10 @@ enableDuplicate = False
 lenOfTokenList = len(TRG.vocab.itos)
 dupList = {}
 
-#mainList = ['n63/d150', 'n65/d30', 'n65/d90', 'n65/d30', 'n65/d30', 'n64/d300', 'n64/d150', 'n64/d60']
-mainList = [TRG.vocab.itos[i] for i in np.random.uniform(0, high=lenOfTokenList-1, size=(7,)).astype(int).tolist()]
+if len(mainList) <= 0:
+  mainList = [TRG.vocab.itos[i] for i in np.random.uniform(0, high=lenOfTokenList-1, size=(7,)).astype(int).tolist()]
+
+
 prevSeq = mainList
 for i in range(0,setNum):
 
@@ -492,7 +526,8 @@ for countNum in countList:
   tokenizerList = hiraTokenizer(hiraStr)
   hiraList.append(tokenizerList)
 
-  print('[',resStr,' [',countNum,':',sumNum,']')
+  #print('[',resStr,' [',countNum,':',sumNum,']')
+  print('[',resStr,']')
 
 hiraTxt.close()
 kanjiTxt.close()
