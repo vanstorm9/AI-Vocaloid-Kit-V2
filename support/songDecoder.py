@@ -9,9 +9,6 @@ import torchtext
 from torchtext.datasets import Multi30k
 from torchtext.data import Field, BucketIterator
 
-import matplotlib.pyplot as plt
-import matplotlib.ticker as ticker
-
 import spacy
 import numpy as np
 
