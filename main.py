@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 # Example command:
-# python3 main.py --seed inputs/noteSeed.txt
+# python3 main.py --seed inputs/noteSeed.txt --dupThresh 3
 
 import numpy as np
 import fugashi
@@ -33,18 +33,23 @@ import argparse
 outputDir = './outputs/'
 
 
-
-
 parser = argparse.ArgumentParser(description='Commands for the vocaloid generator')
 parser.add_argument('--seed', dest="seed",action="store",default=None,
-                   help='Use beginning notes to initalize melody generation')
+                   help='Use beginning notes to initalize melody generation.')
+parser.add_argument('--modelPath', dest="modelPath",action="store",default='savedModels/9-22-music.pt',
+                   help='Path to the trained model')
+parser.add_argument('--dupThresh', dest="dupThresh",action="store",type=int,default=3,
+                   help='Threshold to balance between note harmony and repeating melodies. Decrease the value decrease chance of duplication, though this can affect the note harmony among verses')
+parser.add_argument('--numOfNotes', dest="numOfNotes",action="store",type=int,default=200,
+                   help='Determines the number of notes/midi commands in the generated song')
 
 args = parser.parse_args()
 
+
 seedNotePath = args.seed
-
-
-
+dupThresh = args.dupThresh
+modelPath = args.modelPath
+setNum = args.numOfNotes
 
 # We feed in a text file that contains starter notes
 
@@ -212,11 +217,7 @@ def generateCSVFile(df):
 
 """Now we will start decoding and construct a midi / vsqx file"""
 
-
-modelPath = savedModelDir+'9-22-music.pt'
-
 model = songDecoder.initalizeModel()
-#model.load_state_dict(torch.load('melodyModel-9-20-20.pt'))
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 model.load_state_dict(torch.load(modelPath,map_location=device))
 print(f'The model has {songDecoder.count_parameters(model):,} trainable parameters')
@@ -249,11 +250,8 @@ TRG.build_vocab(train_data, min_freq = 2)
 #vsqxData = json2vsqx(vsqxJson)
 
 # We start to construct the midi file
-setNum = 200
-#setNum = 50
 
-enableDuplicate = False
-#enableDuplicate = True
+
 
 lenOfTokenList = len(TRG.vocab.itos)
 dupList = {}
@@ -261,6 +259,7 @@ dupList = {}
 if len(mainList) <= 0:
   mainList = [TRG.vocab.itos[i] for i in np.random.uniform(0, high=lenOfTokenList-1, size=(7,)).astype(int).tolist()]
 
+enableDuplicate = False
 
 prevSeq = mainList
 for i in range(0,setNum):
@@ -271,11 +270,8 @@ for i in range(0,setNum):
   dupList = addTokensToDup(translation,dupList,i)  # For individual tokens
   
   if not enableDuplicate:
-    
-    #if isDuplicateSeq(token ,dupList,i):
-    #if isDuplicate(translation,dupList,i):
 
-    dup,dupList = isDuplicateSeq(translation ,dupList,i,3)
+    dup,dupList = isDuplicateSeq(translation ,dupList,i,dupThresh)
     if dup:
       # We generate a random token to predict on
       randSeq = np.random.uniform(0, high=lenOfTokenList-1, size=(7,)).astype(int)
