@@ -1,7 +1,4 @@
 # -*- coding: utf-8 -*-
-
-!pip3 install torchtext==0.6.0
-
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -19,6 +16,7 @@ import numpy as np
 import random
 import math
 import time
+import argparse
 
 SEED = 1234
 
@@ -27,6 +25,17 @@ np.random.seed(SEED)
 torch.manual_seed(SEED)
 torch.cuda.manual_seed(SEED)
 torch.backends.cudnn.deterministic = True
+
+
+parser = argparse.ArgumentParser(description='Commands for the vocaloid generator')
+parser.add_argument('--modelOutput', dest="modelOutput",action="store",default='music-model.pt',
+                   help='Use beginning notes to initalize melody generation')
+
+args = parser.parse_args()
+
+
+modelOutputPath = args.modelOutput
+
 
 """We'll then create our tokenizers as before."""
 
@@ -612,7 +621,7 @@ for epoch in range(N_EPOCHS):
     
     if valid_loss < best_valid_loss:
         best_valid_loss = valid_loss
-        torch.save(model.state_dict(), 'music-model.pt')
+        torch.save(model.state_dict(), modelOutputPath)
     
     print(f'Epoch: {epoch+1:02} | Time: {epoch_mins}m {epoch_secs}s')
     print(f'\tTrain Loss: {train_loss:.3f} | Train PPL: {math.exp(train_loss):7.3f}')
@@ -620,7 +629,7 @@ for epoch in range(N_EPOCHS):
 
 """We load our "best" parameters and manage to achieve a better test perplexity than all previous models."""
 
-model.load_state_dict(torch.load('music-model.pt'))
+model.load_state_dict(torch.load(modelOutputPath))
 
 test_loss = evaluate(model, test_iterator, criterion)
 
