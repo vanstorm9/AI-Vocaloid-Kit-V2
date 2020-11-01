@@ -49,7 +49,7 @@ TRG = Field(tokenize = tokenize_notes,
 
 data_fields = [('src', SRC), ('trg', TRG)]
 
-train_data, test_data = torchtext.data.TabularDataset.splits(path='./', train='colab/pipeline/trainNotes.csv', validation='colab/pipeline/valNotes.csv', format='csv', fields=data_fields)
+train_data, test_data = torchtext.data.TabularDataset.splits(path='./', train='dataset/trainNotes.csv', validation='dataset/valNotes.csv', format='csv', fields=data_fields)
 
 valid_data = test_data
 
