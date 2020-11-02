@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# python3 datasetConvert.py --seqLen 7 --stride 2
+# python3 datasetConvert.py --vsqxDir All-song/ --seqLen 7 --stride 2
 
 import pykakasi
 from midiutil import MIDIFile
@@ -14,6 +14,8 @@ import numpy as np
 import argparse
 
 parser = argparse.ArgumentParser(description='Commands for converting a directory of vsqx files to a csv dataset')
+parser.add_argument('--vsqxDir', dest="vsqxDir",action="store",default='All-songs/',
+                   help='Path to the dirctory that contains all of the vsqx files to be used in dataset')
 parser.add_argument('--seqLen', dest="seqLen",action="store",type=int,default=7,
                    help='The length of each note vector that will iterate through each song')
 parser.add_argument('--stride', dest="stride",action="store",type=int,default=2,
@@ -25,8 +27,8 @@ args = parser.parse_args()
 
 seqLen = args.seqLen
 stride = args.stride
+rootDir = args.vsqxDir
 
-rootDir = './All-songs/'
 assert os.path.exists(rootDir)
 
 

@@ -48,9 +48,10 @@ Optionally, you can also take a vsqx file and generate a file with the first few
 
 # **__Training procedure:__**
 If you want to train your own model on your own set of vsqx files, you have the ability to do so with these training scripts in the "scripts/" directory.
+
 First, you would use this command to convert your directory of vsqx files into a csv dataset.
 ```
-	python3 datasetConvert.py --seqLen 7 --stride 2
+	python3 datasetConvert.py --vsqxDir All-song/ --seqLen 7 --stride 2
 ```
 You can retrieve a sample dataset from here:
 
