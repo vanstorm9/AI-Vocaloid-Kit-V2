@@ -25,8 +25,11 @@ Pip install the required dependencies:
 
 # **__How to run:__**
 The "--modelPath" argument is the path to the trained model
+
 The "--seed" argument is the path to the file that contains the first few notes of a midi file
+
 The "--dupThresh" parameter is a value to serve as a value to balance note harmony and repeating note sequences. Decrease the value decrease chance of duplication, though this can affect the note harmony among verses
+
 The "--numOfNotes" parameter directly controls the length of the generated song.
 
 ```
@@ -45,6 +48,7 @@ First, you would use this command to convert your directory of vsqx files into a
 	python3 datasetConvert.py --seqLen 7 --stride 2
 ```
 You can retrieve a sample dataset from here:
+
 https://drive.google.com/drive/u/1/folders/1gr5FSq0X8cT--Eat5t61sspcoNRWNUiX
 
 Then to begin the training process, run this:
