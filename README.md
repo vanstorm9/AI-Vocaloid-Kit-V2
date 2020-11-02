@@ -12,7 +12,7 @@ The script will generate a vsqx file that contains the melody and lyrics built i
 For those who don't own a vocaloid editor, you can just listen to the generated midi file and read the text files containing the Japanese lyrics
 
 
-Thing this kit is capable of:
+What this AI vocaloid kit is capable of:
 - Converting a directory of VSQX files into a training and validation dataset
 
 - Using a Seq2Seq transformer deep learning architecture model to either randomly generate melodies from scratch or from an inital seed of midi notes
