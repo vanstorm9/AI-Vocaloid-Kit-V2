@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 # Example command:
-# python3 main.py --seed inputs/noteSeed.txt --dupThresh 3
+# python3 main.py --modelPath savedModels/9-22-music.pt --seed inputs/noteSeed.txt --dupThresh 3 --numOfNotes 200
 
 import numpy as np
 import fugashi
@@ -54,6 +54,11 @@ setNum = args.numOfNotes
 # We feed in a text file that contains starter notes
 
 mainList = []
+
+if not os.path.exists(outputDir):
+    mkdirCmd = 'mkdir ' + outputDir
+    os.system(mkdirCmd)  # Works for on a linux OS, comment entire if statement out if using Windows, then manually make the directory
+
 
 if seedNotePath is not None:
 
