@@ -62,5 +62,13 @@ Then to begin the training process, run this:
 	python3 train.py --modelOutput music-model.pt
 ```
 
+# **__Design notes:__**
+Previous version of the AI Vocaloid Kit used midi files as a main source as music data for training and testing. This changed in this version as the current version uses VSQX files (Vocaloid Editor file format) for dataset conversion, training, and testing. While there are a lot more midi files than VSQX files, there were a lot of variables that affeted the quality of the data processing depending on the file. The main purpose of this kit is to generate melodies that would be sung from a singer's voice (aka monophonic melody). This means that midi files that had polyphonic properties (playing multiple melodies on different channels simultanous) were not suitable candidates to be used for training. Also a majority of midi files are based off from a wide variety of instruments, not just singing. Rapid, fluctuating melodies from a piano does not flow the same way as a more steady singing voice, so vsqx files were chosen as the main format for note and data representation instead of pure midi files.
 
+The previous version of this kit had scripts that could convert Youtube videos to midi files, which in turn would be feed into the network to serve as a seed for note generation. However there were problems with this as the Youtube conversion scripts were not accurate (threfore poor quality seed input) along with one of its components from a conversion library being only supported in Python 2.7. Users can choose to use make their own scripts/use 3rd party scripts if they desire though.
 
+# **__Possible improvements that can be made:__**
+
+The number of VSQX files used for training the current model is below 100 files, which is a relatively low number in a machine learning context. It was hard for me to gather a lot of VSQX, so if a much larger number of VSQX files gets collected in the future, retraining can help improve the quality of generated melodoies.
+
+In terms of lyrics, while the markov model does have decent respect for Japanese grammar structure, the choice of nouns and verbs chosen can sometimes lead to a sentence combination that does not make a whole lot of sense. Investing in a deep learning model that generates Japanese sentences as well as respect syllable count constraints would be the ideal solution in the future.    
