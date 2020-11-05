@@ -53,7 +53,7 @@ If you want to train your own model on your own set of vsqx files, you have the 
 
 First, you would use this command to convert your directory of vsqx files into a csv dataset.
 ```
-	python3 datasetConvert.py --vsqxDir All-song/ --seqLen 7 --stride 2
+	python3 datasetConvert.py --vsqxDir All-songs/ --seqLen 7 --stride 2
 ```
 You can retrieve a sample dataset from here:
 
