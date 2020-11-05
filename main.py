@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 # Example command:
-# python3 main.py --modelPath savedModels/9-22-music.pt --seed inputs/noteSeed.txt --dupThresh 3 --numOfNotes 200
+# python3 main.py --modelPath savedModels/9-22-music.pt --seed inputs/noteSeed.txt --dupThresh 3 --numOfNotes 50
 
 import numpy as np
 import fugashi
@@ -40,7 +40,7 @@ parser.add_argument('--modelPath', dest="modelPath",action="store",default='save
                    help='Path to the trained model')
 parser.add_argument('--dupThresh', dest="dupThresh",action="store",type=int,default=3,
                    help='Threshold to balance between note harmony and repeating melodies. Decrease the value decrease chance of duplication, though this can affect the note harmony among verses')
-parser.add_argument('--numOfNotes', dest="numOfNotes",action="store",type=int,default=200,
+parser.add_argument('--numOfNotes', dest="numOfNotes",action="store",type=int,default=50,
                    help='Determines the number of notes/midi commands in the generated song')
 
 args = parser.parse_args()
