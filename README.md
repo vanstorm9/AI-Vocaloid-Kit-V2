@@ -32,7 +32,7 @@ Pip install the required dependencies:
 
 # **__How to run:__**
 ```
-	python3 main.py --modelPath savedModels/9-22-music.pt --seed inputs/noteSeed.txt --dupThresh 3 --numOfNotes 200
+	python3 main.py --modelPath savedModels/9-22-music.pt --seed inputs/noteSeed.txt --dupThresh 3 --numOfNotes 50
 ```
 The "--modelPath" argument is the path to the trained model
 
