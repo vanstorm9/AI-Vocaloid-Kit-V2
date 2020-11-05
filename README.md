@@ -74,3 +74,5 @@ The previous version of this kit had scripts that could convert Youtube videos t
 The number of VSQX files used for training the current model is below 100 files, which is a relatively low number in a machine learning context. It was hard for me to gather a lot of VSQX, so if a much larger number of VSQX files gets collected in the future, retraining can help improve the quality of generated melodoies.
 
 In terms of lyrics, while the markov model does have decent respect for Japanese grammar structure, the choice of nouns and verbs chosen can sometimes lead to a sentence combination that does not make a whole lot of sense. Investing in a deep learning model that generates higher-quality sentences as well as respect syllable count constraints would be the ideal solution in the future.    
+
+There are certain songs in which syllables are stressed and extended across multiple notes, which makes data extraction and lyrics generation more complex. Methods to normalize dataset creation as well as add lyric variety with stressed and unstressed words would be investigated in the future.
