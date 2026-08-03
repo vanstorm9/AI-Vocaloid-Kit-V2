@@ -1,0 +1,44 @@
+support/vocalVocab.py
+  s_753de4564f7040::t_db12f45a15b8b4 1-124
+scripts/train.py
+  s_753de4564f7040::t_cc6c937a54635b 2,4-5,8,11-18,27-34,37,40-88,90-127
+dataset/valNotes.csv
+  s_753de4564f7040::t_83717b94eafd38 1-2334
+requirements.txt
+  s_753de4564f7040::t_962f738485a305 39-40
+scripts/extractVocalMidi.py
+  s_753de4564f7040::t_5deaaed5c7977d 1-153
+support/model.py
+  s_753de4564f7040::t_34c20d158ab03b 73,82-83
+  s_753de4564f7040::t_5c28f608af91fa 179-256
+scripts/datasetConvert.py
+  s_753de4564f7040::t_666d3cee831070 2,7-8,13-14,16,18-26,32,34,37,41-42,46,48,50-53,55-82,84-85,87-128
+support/songDecoder.py
+  s_753de4564f7040::t_1c3413cebd0714 2-4,6
+main.py
+  s_753de4564f7040::t_959e2e0074cb2e 167-168,170-182,185,188-192,194-195,197-204,206-213,215-216,218-219,221,224,226-230,232-234
+  s_753de4564f7040::t_e79bdb9604a5ce 36,42-43
+  s_753de4564f7040::t_17a9ed7fdb3b3d 51
+  s_753de4564f7040::t_cc1034664066d8 248,252-253,257,263-270
+  s_753de4564f7040::t_1293ec9c411936 271-272
+dataset/entireNotes.csv
+  s_753de4564f7040::t_6fd75b26e49351 1-11934
+dataset/trainNotes.csv
+  s_753de4564f7040::t_00c9a440313b3b 1-9601
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "29349bdd5ddc522b4108ea39472c2c634dfedc19",
+  "prompts": {},
+  "sessions": {
+    "s_753de4564f7040": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2207cfea-d4c9-4ccc-97de-5d5c2346d784",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "alowhur-knowbe4 <alowhur@knowbe4.com>"
+    }
+  }
+}
