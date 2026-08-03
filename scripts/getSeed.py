@@ -11,13 +11,12 @@ import os
 import numpy as np
 import argparse
 
-def getNoteData(note, key,indexSecond,track):
-  #print(note.getElementsByTagName(key))
-  try:
-    return int(note.getElementsByTagName(key)[0].firstChild.data)
-  except:
-    secondIndDict = {'n':'noteNum','t':'posTick','dur':'durTick'}
-    return int(track.getElementsByTagName(secondIndDict[key])[indexSecond].firstChild.data)
+def getNoteData(note, key, indexSecond, track):
+    try:
+        return int(note.getElementsByTagName(key)[0].firstChild.data)
+    except (IndexError, AttributeError):
+        secondIndDict = {'n': 'noteNum', 't': 'posTick', 'dur': 'durTick'}
+        return int(track.getElementsByTagName(secondIndDict[key])[indexSecond].firstChild.data)
 
 parser = argparse.ArgumentParser(description='Commands for the vocaloid generator')
 parser.add_argument('--filePath', dest="filePath",action="store",default='Crossing-Fields.vsqx',

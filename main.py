@@ -8,18 +8,15 @@ import fugashi
 import os
 import pykakasi
 import jaconv
-from googletrans import Translator
-import time
+import time as time_module
 import pickle
 import string
-
 
 from midiutil import MIDIFile
 
 import xml.dom.minidom
 import sys
 from pathlib import PurePath
-import numpy as np
 
 # Imported scripts
 import support.json2vsqx as json2vsqx
@@ -34,397 +31,293 @@ outputDir = './outputs/'
 
 
 parser = argparse.ArgumentParser(description='Commands for the vocaloid generator')
-parser.add_argument('--seed', dest="seed",action="store",default=None,
-                   help='Use beginning notes to initalize melody generation.')
-parser.add_argument('--modelPath', dest="modelPath",action="store",default='savedModels/9-22-music.pt',
-                   help='Path to the trained model')
-parser.add_argument('--dupThresh', dest="dupThresh",action="store",type=int,default=3,
-                   help='Threshold to balance between note harmony and repeating melodies. Decrease the value decrease chance of duplication, though this can affect the note harmony among verses')
-parser.add_argument('--numOfNotes', dest="numOfNotes",action="store",type=int,default=50,
-                   help='Determines the number of notes/midi commands in the generated song')
+parser.add_argument('--seed', dest="seed", action="store", default=None,
+                    help='Use beginning notes to initalize melody generation.')
+parser.add_argument('--modelPath', dest="modelPath", action="store", default='savedModels/9-22-music.pt',
+                    help='Path to the trained model')
+parser.add_argument('--dupThresh', dest="dupThresh", action="store", type=int, default=3,
+                    help='Threshold to balance between note harmony and repeating melodies.')
+parser.add_argument('--numOfNotes', dest="numOfNotes", action="store", type=int, default=50,
+                    help='Determines the number of notes/midi commands in the generated song')
 
 args = parser.parse_args()
-
 
 seedNotePath = args.seed
 dupThresh = args.dupThresh
 modelPath = args.modelPath
 setNum = args.numOfNotes
 
-# We feed in a text file that contains starter notes
-
 mainList = []
 
-if not os.path.exists(outputDir):
-    mkdirCmd = 'mkdir ' + outputDir
-    os.system(mkdirCmd)  # Works for on a linux OS, comment entire if statement out if using Windows, then manually make the directory
-
+os.makedirs(outputDir, exist_ok=True)
 
 if seedNotePath is not None:
+    if not os.path.exists(seedNotePath):
+        print("The path to the file containing initial notes (--seed) does not exist")
+        sys.exit(1)
 
-  try:
-    assert os.path.exists(seedNotePath)
-  except:
-    print("The path to the file contianing inital notes, represented as arguument --seed, does not exist")
-    raise
-
-  with open(seedNotePath,"r") as noteSeedHandle:
-    for line in noteSeedHandle:
-      mainList.append(line)
+    with open(seedNotePath, "r") as noteSeedHandle:
+        for line in noteSeedHandle:
+            mainList.append(line.strip())
 
 
-
-time = 0
-#mainList = ['n63/d150', 'n65/d30', 'n65/d90', 'n65/d30', 'n65/d30', 'n64/d300', 'n64/d150', 'n64/d60']
+tick_time = 0
 
 
-"""Now we proceed to generate lyrics"""
-
-def printNotesTokens(vsqxPath,printNoteLim=-1):
-  path = PurePath(vsqxPath)
-
-  vsqx = xml.dom.minidom.parse(str(path))
-
-  TEMPO = int(vsqx.getElementsByTagName('tempo')[0].childNodes[1].firstChild.data[:-2])
-
-  #mf = MIDIFile(len(vsqx.getElementsByTagName('vsTrack')), removeDuplicates=False)
-
-  time = 0
-  beginInt = 5
-  tokList = []
-  for trackNo, track in enumerate(vsqx.getElementsByTagName('vsTrack')):
-    for i,note in enumerate(track.getElementsByTagName('note')):
-      if i == 0:
-        timeOffSet = getNoteData(note,'t')-beginInt
-
-      if printNoteLim > 0 and i > printNoteLim:
-        break
-        
-      noteTok =  'n'+str(getNoteData(note,'n'))+'/d'+str(getNoteData(note, 'dur'))
-      print(noteTok,'   note: ',getNoteData(note,'n'),'   time: ',getNoteData(note,'t')-timeOffSet,'  duration: ', getNoteData(note, 'dur'), '  velocity: ',getNoteData(note, 'v'))
-      tokList.append(noteTok)
-  return tokList
+def printNotesTokens(vsqxPath, printNoteLim=-1):
+    path = PurePath(vsqxPath)
+    vsqx = xml.dom.minidom.parse(str(path))
+    TEMPO = int(vsqx.getElementsByTagName('tempo')[0].childNodes[1].firstChild.data[:-2])
+    tokList = []
+    for trackNo, track in enumerate(vsqx.getElementsByTagName('vsTrack')):
+        for i, note in enumerate(track.getElementsByTagName('note')):
+            if i == 0:
+                timeOffSet = getNoteData(note, 't') - 5
+            if printNoteLim > 0 and i > printNoteLim:
+                break
+            noteTok = 'n' + str(getNoteData(note, 'n')) + '/d' + str(getNoteData(note, 'dur'))
+            print(noteTok, '   note: ', getNoteData(note, 'n'), '   time: ',
+                  getNoteData(note, 't') - timeOffSet, '  duration: ', getNoteData(note, 'dur'),
+                  '  velocity: ', getNoteData(note, 'v'))
+            tokList.append(noteTok)
+    return tokList
 
 
+def createNote(note, params):
+    noteDict = {}
+    tokenDict = {}
+    tokenSeq = []
+    tokenStr = ""
+    if params is None:
+        i = 0
+        timeOffset = getNoteData(note, 't') - 5
+        prevTime = getNoteData(note, 't') - timeOffset
+        durTime = prevTime
+    else:
+        prevTime, durTime, timeOffset, noteDict, tokenDict, tokenSeq, i = params
 
+    currTime = getNoteData(note, 't') - timeOffset
 
-def createNote(note,params):
-  
-  noteDict = {}
-  tokenDict = {}
+    if durTime < currTime:
+        if 0 in noteDict:
+            noteDict[0] += 1
+        else:
+            noteDict[0] = 1
+        tokenStr = "n" + str(0) + "/d" + str(currTime - durTime) + "|"
+        tokenSeq.append(tokenStr)
+        if tokenStr in tokenDict:
+            tokenDict[tokenStr] += 1
+        else:
+            tokenDict[tokenStr] = 1
 
-  tokenSeq = [] # For keeping track of order of tokens
+    durTime = currTime + getNoteData(note, 'dur')
+    tokenStr = "n" + str(getNoteData(note, 'n')) + "/d" + str(getNoteData(note, 'dur')) + "|"
+    tokenSeq.append(tokenStr)
 
-  tokenStr = ""
-  if params is None:
-    # First note step
-    i = 0
-    timeOffset = getNoteData(note,'t') - 5
-    prevTime = getNoteData(note,'t')-timeOffset
-    durTime = prevTime
-  else:
-    prevTime,durTime,timeOffset,noteDict,tokenDict,tokenSeq,i = params
-  
-
-  currTime = getNoteData(note,'t')-timeOffset
-
-  if durTime < currTime:
-      # This means there is a gap between ending duration of note and new note
-      # So we add a value of 0
-      #print('note: ',0,'   time: ',durTime,'  duration: ', currTime-durTime, '  velocity: ',0)
-
-
-    
-
-      if 0 in noteDict:
-        noteDict[0] += 1
-      else:
-        noteDict[0] = 1
-
-      tokenStr = "n"+str(0)+"/d"+str(currTime-durTime)+"|"
-      tokenSeq.append(tokenStr)
-      if tokenStr in tokenDict:
+    if tokenStr in tokenDict:
         tokenDict[tokenStr] += 1
-      else:
+    else:
         tokenDict[tokenStr] = 1
 
-
-      #mf.addNote(trackNo, 0, 0, durTime / 480, (currTime-durTime) / 480, 0)
-
-    
-  #print('note: ',getNoteData(note,'n'),'   time: ',currTime,'  duration: ', getNoteData(note, 'dur'), '  velocity: ',getNoteData(note, 'v'))
-    
-  durTime = currTime + getNoteData(note, 'dur')
-
-
-  tokenStr = "n"+str(getNoteData(note,'n'))+"/d"+str(getNoteData(note, 'dur'))+"|"
-  tokenSeq.append(tokenStr)
-
-  if tokenStr in tokenDict:
-    tokenDict[tokenStr] += 1
-  else:
-    tokenDict[tokenStr] = 1
-  # Count frequency
-  if getNoteData(note,'n') not in noteDict:
-    noteDict[getNoteData(note,'n')] = 1
-  else:
-    noteDict[getNoteData(note,'n')] += 1
-  i+= 1
-  return (prevTime,durTime,timeOffset,noteDict,tokenDict,tokenSeq,i)
-
-def generateNoteData(tokenSeq):
-  seqLen = 7
-  stride = 2
+    if getNoteData(note, 'n') not in noteDict:
+        noteDict[getNoteData(note, 'n')] = 1
+    else:
+        noteDict[getNoteData(note, 'n')] += 1
+    i += 1
+    return (prevTime, durTime, timeOffset, noteDict, tokenDict, tokenSeq, i)
 
 
-  currInd = 0
-  dfListCurr = []
-  dfListTar = []
+def generateNoteData(tokenSeq, seqLen=7, stride=2):
+    currInd = 0
+    dfListCurr = []
+    dfListTar = []
 
-  for i in range(0,int(len(tokenSeq)/7)):
-    currSeq = tokenSeq[currInd:(currInd+seqLen)]
-    currStr = ''.join(currSeq)
-    dfListCurr.append(currStr)
+    for i in range(0, int(len(tokenSeq) / seqLen)):
+        currSeq = tokenSeq[currInd:(currInd + seqLen)]
+        currStr = ''.join(currSeq)
+        dfListCurr.append(currStr)
 
-    tarInd = currInd+seqLen
-    tarSeq = tokenSeq[tarInd:(tarInd+seqLen)]
-    tarStr = ''.join(tarSeq)
-    dfListTar.append(tarStr)
+        tarInd = currInd + seqLen
+        tarSeq = tokenSeq[tarInd:(tarInd + seqLen)]
+        tarStr = ''.join(tarSeq)
+        dfListTar.append(tarStr)
 
-    currInd += stride
-    #print(currStr)
-    #print(tarStr)
-    #print('-------------')
+        currInd += stride
 
-
-  dfsrc = pd.DataFrame(dfListCurr)
-  df2trg = pd.DataFrame(dfListTar)
-
-  frames = [dfsrc, df2trg]
-  df = pd.concat(frames,axis=1)
-  #print(df)
-
-  return df
+    dfsrc = pd.DataFrame(dfListCurr)
+    df2trg = pd.DataFrame(dfListTar)
+    df = pd.concat([dfsrc, df2trg], axis=1)
+    return df
 
 
 def generateCSVFile(df):
-  df.to_csv("entireNotes.csv", index=False)
-  #print(df)
-
-  msk = np.random.rand(len(df)) < 0.8
-  train_df = df[msk]
-  test_df = df[~msk]
-  #print(test_df)
-
-  train_df.to_csv("trainNotes.csv", index=False)
-  test_df.to_csv("valNotes.csv", index=False)
+    df.to_csv("entireNotes.csv", index=False)
+    msk = np.random.rand(len(df)) < 0.8
+    train_df = df[msk]
+    test_df = df[~msk]
+    train_df.to_csv("trainNotes.csv", index=False)
+    test_df.to_csv("valNotes.csv", index=False)
 
 
 """Now we will start decoding and construct a midi / vsqx file"""
 
 model = songDecoder.initalizeModel()
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-model.load_state_dict(torch.load(modelPath,map_location=device))
+model.load_state_dict(torch.load(modelPath, map_location=device, weights_only=True))
 print(f'The model has {songDecoder.count_parameters(model):,} trainable parameters')
 
 from torchtext.data import Field, BucketIterator
 import torchtext
 
-SRC = Field(tokenize = songDecoder.tokenize_notes, 
-            init_token = '<sos>', 
-            eos_token = '<eos>', 
-            lower = True, 
-            batch_first = True)
+SRC = Field(tokenize=songDecoder.tokenize_notes,
+            init_token='<sos>',
+            eos_token='<eos>',
+            lower=True,
+            batch_first=True)
 
-TRG = Field(tokenize = songDecoder.tokenize_notes, 
-            init_token = '<sos>', 
-            eos_token = '<eos>', 
-            lower = True, 
-            batch_first = True)
+TRG = Field(tokenize=songDecoder.tokenize_notes,
+            init_token='<sos>',
+            eos_token='<eos>',
+            lower=True,
+            batch_first=True)
 
 data_fields = [('src', SRC), ('trg', TRG)]
 
-train_data, test_data = torchtext.data.TabularDataset.splits(path='./', train='dataset/trainNotes.csv', validation='dataset/valNotes.csv', format='csv', fields=data_fields)
+train_data, test_data = torchtext.data.TabularDataset.splits(
+    path='./', train='dataset/trainNotes.csv', validation='dataset/valNotes.csv',
+    format='csv', fields=data_fields)
 
 valid_data = test_data
 
-SRC.build_vocab(train_data, min_freq = 2)
-TRG.build_vocab(train_data, min_freq = 2)
-
-
-#vsqxData = json2vsqx(vsqxJson)
-
-# We start to construct the midi file
-
-
+SRC.build_vocab(train_data, min_freq=2)
+TRG.build_vocab(train_data, min_freq=2)
 
 lenOfTokenList = len(TRG.vocab.itos)
 dupList = {}
 
 if len(mainList) <= 0:
-  mainList = [TRG.vocab.itos[i] for i in np.random.uniform(0, high=lenOfTokenList-1, size=(7,)).astype(int).tolist()]
+    mainList = [TRG.vocab.itos[i] for i in np.random.uniform(0, high=lenOfTokenList - 1, size=(7,)).astype(int).tolist()]
 
 enableDuplicate = False
 
 prevSeq = mainList
-for i in range(0,setNum):
+for i in range(0, setNum):
+    translation, attention = translate_sentence(prevSeq, SRC, TRG, model, device)
 
-  translation, attention = translate_sentence(prevSeq, SRC, TRG, model, device)
+    token = '|'.join(translation)
+    dupList = addTokensToDup(translation, dupList, i)
 
-  token = '|'.join(translation)
-  dupList = addTokensToDup(translation,dupList,i)  # For individual tokens
-  
-  if not enableDuplicate:
+    if not enableDuplicate:
+        dup, dupList = isDuplicateSeq(translation, dupList, i, dupThresh)
+        if dup:
+            randSeq = np.random.uniform(0, high=lenOfTokenList - 1, size=(7,)).astype(int)
+            prevSeq = [TRG.vocab.itos[i] for i in randSeq]
+            translation, attention = translate_sentence(prevSeq, SRC, TRG, model, device)
+            dupList = addTokensToDup(translation, dupList, i)
 
-    dup,dupList = isDuplicateSeq(translation ,dupList,i,dupThresh)
-    if dup:
-      # We generate a random token to predict on
-      randSeq = np.random.uniform(0, high=lenOfTokenList-1, size=(7,)).astype(int)
-      prevSeq = [TRG.vocab.itos[i] for i in randSeq]
-      translation, attention = translate_sentence(prevSeq, SRC, TRG, model, device)
-      
-      
-      tokenNew = '|'.join(translation)
-      #dupList[tokenNew] = i  # For sequence tokens
-      
-      dupList = addTokensToDup(translation,dupList,i) # For individual tokens
-    
-  
-  mainList = appendToMainList(mainList,translation)
+    mainList = appendToMainList(mainList, translation)
+    prevSeq = translation
+    print(prevSeq)
 
-  # For sequence tokens
-  #dupList[token] = i 
 
-  prevSeq = translation
-  print(prevSeq)
-
-  #print(f'predicted trg = {translation}')
-#print(mainList)
-
-vsqxJson = {u'tracks': 1, 
-            u'resolution': 480, 
+vsqxJson = {u'tracks': 1,
+            u'resolution': 480,
             u'stream': [],
             u'format': 1}
 
-
-
 mf = MIDIFile(2, removeDuplicates=False)
 
-trackNo = 0  # Added
-mf.addTrackName(trackNo, time, "Track {}".format(str(trackNo)))
+trackNo = 0
+mf.addTrackName(trackNo, tick_time, "Track {}".format(str(trackNo)))
 
 currTime = 5
 
 for noteTok in mainList:
-  try:
-    note,duration = noteTok.split('/')
-  except:
-    continue
-  note = int(note[1:])
-  duration = int(duration[1:])
+    try:
+        note, duration = noteTok.split('/')
+    except ValueError:
+        continue
+    note = int(note[1:])
+    duration = int(duration[1:])
 
-  if note == 0:
-    if duration > 2000:
-      duration = 2000
+    if note == 0:
+        if duration > 2000:
+            duration = 2000
+        currTime += duration
+        continue
+
+    duration += 150
+
+    vsqxJson['stream'].append({u'velocity': 64, u'tick': 1, u'sub_type': u'noteOn', u'channel': 1, u'note_num': note})
+    vsqxJson['stream'].append({u'velocity': 0, u'tick': duration + 1, u'sub_type': u'noteOff', u'channel': 1, u'note_num': note, u'lyrics': 'み'})
+
+    mf.addNote(trackNo, 0, note, currTime / 480, duration / 480, 64)
     currTime += duration
-    continue
-  
-  duration += 150
-  
-  #print(duration)
-
-  vsqxJson['stream'].append({u'velocity': 64, u'tick': 1 , u'sub_type': u'noteOn', u'channel': 1, u'note_num': note})
-  vsqxJson['stream'].append({u'velocity': 0, u'tick': duration+1, u'sub_type': u'noteOff', u'channel': 1, u'note_num': note, u'lyrics': 'み'})
-
-  mf.addNote(trackNo, 0, note, currTime / 480, duration / 480, 64)
-  
-  currTime += duration
 
 
-with open(outputDir+"out.mid", 'wb') as outf:
-	mf.writeFile(outf)
- 
-# We write the vsqx file
+with open(outputDir + "out.mid", 'wb') as outf:
+    mf.writeFile(outf)
+
 vsqxData = json2vsqx.json2vsqx(vsqxJson)
-f = open(outputDir +'output.vsqx', 'wb')
+f = open(outputDir + 'output.vsqx', 'wb')
 f.write(vsqxData.toprettyxml('', '', 'utf-8'))
 f.close()
 
 """From here, we can generate the lyrics to our song"""
 
-
 """We start making the corpus"""
 
-import time
-
 tagger = fugashi.Tagger()
-
-# Trump's speeches here: https://github.com/ryanmcdermott/trump-speeches
-#trump = open('speeches.txt', encoding='utf8').read()
 newCorpus = False
 
 lyricDir = './lyric-data/'
 corpus = []
-#lastWordDict = {}
-#firstWordDict = {}
-begin = time.time()
+savedModelDir = './savedModels/'
+begin = time_module.time()
 
 if newCorpus:
-  ##################
-  # To retrieve the double pairs in front and end of sentence
-  for i,file in enumerate(os.listdir(lyricDir)):
-    print(i,' : ', file)
-    txtPath = lyricDir + file
-    #print(txtPath)
-    trump = open(txtPath, encoding='utf8').read()
-    trump  = lyricProcess(punctPreprocess(trump))
+    for i, file in enumerate(os.listdir(lyricDir)):
+        print(i, ' : ', file)
+        txtPath = lyricDir + file
+        trump = open(txtPath, encoding='utf8').read()
+        trump = lyricProcess(punctPreprocess(trump))
+        corpusTmp = [word for word in pykakasiTagDoubleWord(trump, kks, tagger)]
+        corpus += corpusTmp
 
-    corpusTmp = [word for word in pykakasiTagDoubleWord(trump,kks,tagger)]
-    corpus += corpusTmp 
+    print(len(corpus))
+    print(time_module.time() - begin, 's')
+    begin = time_module.time()
 
-  print(len(corpus))
-  print(time.time()-begin,'s')
-  begin = time.time()
-
-
-  ###################
-
-
-  for i,file in enumerate(os.listdir(lyricDir)):
-    print(i,' : ', file)
-    txtPath = lyricDir + file
-    #print(txtPath)
-    trump = open(txtPath, encoding='utf8').read()
-    trump  = lyricProcess(punctPreprocess(trump))
-
-    #lastWordDict = lastWordFromCorpus(trump,lastWordDict,kks,tagger)
-    #firstWordDict = firstWordFromCorpus(trump,firstWordDict,kks,tagger)
-
-    #corpus = trump.split()
-    corpusTmp = [word.surface for word in tagger(trump)]
-    #print(len(corpus))
-    corpus += corpusTmp 
-  pickle.dump(corpus, open(savedModelDir+"corpus.pkl", "wb" ))
+    for i, file in enumerate(os.listdir(lyricDir)):
+        print(i, ' : ', file)
+        txtPath = lyricDir + file
+        trump = open(txtPath, encoding='utf8').read()
+        trump = lyricProcess(punctPreprocess(trump))
+        corpusTmp = [word.surface for word in tagger(trump)]
+        corpus += corpusTmp
+    pickle.dump(corpus, open(savedModelDir + "corpus.pkl", "wb"))
 else:
-  corpus = pickle.load(open(savedModelDir+"corpus.pkl", "rb" ))
+    corpus = pickle.load(open(savedModelDir + "corpus.pkl", "rb"))
 
 print(len(corpus))
-print(time.time()-begin,'s')
+print(time_module.time() - begin, 's')
+
 
 def make_pairs(corpus):
-    for i in range(len(corpus)-1):
-        yield (corpus[i], corpus[i+1])
-        
+    for i in range(len(corpus) - 1):
+        yield (corpus[i], corpus[i + 1])
+
+
 pairs = make_pairs(corpus)
 
 word_dict = {}
 
 for word_1, word_2 in pairs:
-    if word_1 in word_dict.keys():
+    if word_1 in word_dict:
         if word_2 in word_dict[word_1]:
-          word_dict[word_1][word_2] += 1
+            word_dict[word_1][word_2] += 1
         else:
-          word_dict[word_1][word_2] = 1
+            word_dict[word_1][word_2] = 1
     else:
         word_dict[word_1] = {word_2: 1}
 
@@ -434,101 +327,63 @@ while first_word.islower():
 chain = [first_word]
 n_words = 50
 
-
 word = chain[-1]
 
-
-'''
-# This is to convert VSQX to midi
-from midiutil import MIDIFile
-
-import xml.dom.minidom
-import sys
-from pathlib import PurePath
-
-#####
-import os
-
-####
-import pandas as pd
-import numpy as np
-'''
-
-
-	
-
-#vsqxPath = '/content/Crossing-Fields.vsqx'
-#vsqxPath = '/content/AiDee-simplified.vsqx'
-#vsqxPath = '/content/seed-crossingField-0.vsqx'
-#vsqxPath = '/content/random-0.vsqx'
-vsqxPath = outputDir +'output.vsqx'
+vsqxPath = outputDir + 'output.vsqx'
 
 assert os.path.exists(vsqxPath)
 
 path = PurePath(vsqxPath)
-
 vsqx = xml.dom.minidom.parse(str(path))
 
 TEMPO = int(vsqx.getElementsByTagName('tempo')[0].childNodes[1].firstChild.data[:-2])
 
 mf = MIDIFile(len(vsqx.getElementsByTagName('vsTrack')), removeDuplicates=False)
 
-time = 0
+midi_time = 0
 
 for trackNo, track in enumerate(vsqx.getElementsByTagName('vsTrack')):
-	mf.addTrackName(trackNo, time, "Track {}".format(str(trackNo)))
-	
-	for i,note in enumerate(track.getElementsByTagName('noteNum')):
-		#mf.addNote(trackNo, 0, getNoteData(note, 'n'), getNoteData(note, 't') / 480, getNoteData(note, 'dur') / 480, getNoteData(note, 'v'))
-		#print('note: ',note)
-		mf.addNote(trackNo, 0, getNoteData(note, 'n',i,track), getNoteData(note, 't',i,track) / 480, getNoteData(note, 'dur',i,track) / 480, 64)
-		#print('note: ',getNoteData(note,'n'),'   time: ',getNoteData(note,'t'),'  duration: ', getNoteData(note, 'dur'), '  velocity: ',getNoteData(note, 'v'))
-	mf.addTempo(trackNo, time, TEMPO)
+    mf.addTrackName(trackNo, midi_time, "Track {}".format(str(trackNo)))
 
-#with open(str(path.parents[0]) +'\\'+ path.stem + ".mid", 'wb') as outf:
-with open(outputDir +"out.mid", 'wb') as outf:
-	mf.writeFile(outf)
+    for i, note in enumerate(track.getElementsByTagName('noteNum')):
+        mf.addNote(trackNo, 0, getNoteData(note, 'n', i, track), getNoteData(note, 't', i, track) / 480,
+                   getNoteData(note, 'dur', i, track) / 480, 64)
+    mf.addTempo(trackNo, midi_time, TEMPO)
+
+with open(outputDir + "out.mid", 'wb') as outf:
+    mf.writeFile(outf)
 
 
-
-
-params,noteClusterList = getNoteGroupCluster(vsqxPath)
-prevTime,durTime,timeOffset,noteDict,tokenDict,tokenSeq,i = params
-
-
-#print(noteClusterList[:10])
-#print(noteNewClusterList[:10])
+params, noteClusterList = getNoteGroupCluster(vsqxPath)
+prevTime, durTime, timeOffset, noteDict, tokenDict, tokenSeq, i = params
 
 noteNewClusterList = divideListCluster(noteClusterList)
 countList = combineSmallNoteClusterCount(noteNewClusterList)
 
-kanjiTxt = open(outputDir +'kanji-lyrics.txt','w')
-hiraTxt = open(outputDir +'hira-lyrics.txt','w')
+kanjiTxt = open(outputDir + 'kanji-lyrics.txt', 'w')
+hiraTxt = open(outputDir + 'hira-lyrics.txt', 'w')
 
 hiraList = []
 
 lengthWord = 3
 initalWord = None
 for countNum in countList:
-  #print(countNum)
-  if countNum < lengthWord:
-    resStr,sumNum = generateLyric(countNum,countNum,None,kks)
-  else:
-    resStr,sumNum  = generateLyric(countNum,lengthWord,initalWord,kks)
-  
-  initalWord = str(getLastWord(resStr,tagger))
-  resStr = resStr.replace('\n','')
+    if countNum < lengthWord:
+        resStr, sumNum = generateLyric(countNum, countNum, None, kks)
+    else:
+        resStr, sumNum = generateLyric(countNum, lengthWord, initalWord, kks)
 
-  hiraTxt.write(convertToHira(resStr, kks))
-  kanjiTxt.write(resStr)
+    initalWord = str(getLastWord(resStr, tagger))
+    resStr = resStr.replace('\n', '')
 
-  # Now we add the resulting lyrics to our hiragana lyric List
-  hiraStr = jaconv.kata2hira(convertToHira(resStr, kks))
-  tokenizerList = hiraTokenizer(hiraStr)
-  hiraList.append(tokenizerList)
+    hiraTxt.write(convertToHira(resStr, kks))
+    kanjiTxt.write(resStr)
 
-  #print('[',resStr,' [',countNum,':',sumNum,']')
-  print('[',resStr,']')
+    hiraStr = jaconv.kata2hira(convertToHira(resStr, kks))
+    tokenizerList = hiraTokenizer(hiraStr)
+    hiraList.append(tokenizerList)
+
+    print('[', resStr, ']')
 
 hiraTxt.close()
 kanjiTxt.close()
@@ -536,20 +391,18 @@ kanjiTxt.close()
 
 """We try to generate the song again, but with the lyrics"""
 
-
-vsqxJson = {u'tracks': 1, 
-            u'resolution': 480, 
+vsqxJson = {u'tracks': 1,
+            u'resolution': 480,
             u'stream': [],
             u'format': 1}
 
 path = PurePath(vsqxPath)
 vsqx = xml.dom.minidom.parse(str(path))
 
-# From our constructed list, we create a midi file
 TEMPO = int(vsqx.getElementsByTagName('tempo')[0].childNodes[1].firstChild.data[:-2])
 mf = MIDIFile(2, removeDuplicates=False)
 
-trackNo = 1  # Added
+trackNo = 1
 timeInt = 0
 mf.addTrackName(trackNo, timeInt, "Track {}".format(str(trackNo)))
 
@@ -558,72 +411,50 @@ currTime = 5
 rowIndexHira = 0
 colIndexHira = 0
 
-tokenSeq
-#for i,noteTok in enumerate(mainList):
-for i,noteTok in enumerate(tokenSeq):
-  noteTok = noteTok.replace('|','')
-  #print(noteTok)
-  try:
-    note,duration = noteTok.split('/')
-  except:
-    continue
-    
-  note = int(note[1:])
-  duration = int(duration[1:])
-
-  
-
-  if note == 0:
-    if duration > 2000:
-      duration = 2000
-    currTime += duration
-    continue
-  
-  duration += 50
-  
-  #print(duration)
-
-
-  # We add note and generated hiragana letter to our vsqx file
-
-  vsqxJson['stream'].append({u'velocity': 64, u'tick': 1 , u'sub_type': u'noteOn', u'channel': 0, u'note_num': note})
-  #print(noteTok)
-  if note == 0:
-    # We do not insert lyrics and increment row
-    vsqxJson['stream'].append({u'velocity': 0, u'tick': duration+1, u'sub_type': u'noteOff', u'channel': 0, u'note_num': note})
-    
-    if len(hiraList[rowIndexHira])-1 > colIndexHira:
-      colIndexHira += 1
-    else:
-      rowIndexHira += 1
-      colIndexHira = 0
-  else:
-    #print('row: ', rowIndexHira, '   col: ', colIndexHira)
-    #print(colIndexHira, '   ', hiraList[rowIndexHira])
+for i, noteTok in enumerate(tokenSeq):
+    noteTok = noteTok.replace('|', '')
     try:
-      #print('     ',hiraList[rowIndexHira][colIndexHira])
-      lyricLetter = hiraList[rowIndexHira][colIndexHira]
-    except:
-      rowIndexHira += 1
-      colIndexHira = 0
-      lyricLetter = hiraList[rowIndexHira][colIndexHira]
+        note, duration = noteTok.split('/')
+    except ValueError:
+        continue
 
-    vsqxJson['stream'].append({u'velocity': 0, u'tick': duration+1, u'sub_type': u'noteOff', u'channel': 0, u'note_num': note, u'lyrics': lyricLetter})
+    note = int(note[1:])
+    duration = int(duration[1:])
+
+    if note == 0:
+        if duration > 2000:
+            duration = 2000
+        currTime += duration
+        if len(hiraList[rowIndexHira]) - 1 > colIndexHira:
+            colIndexHira += 1
+        else:
+            rowIndexHira += 1
+            colIndexHira = 0
+        continue
+
+    duration += 50
+
+    vsqxJson['stream'].append({u'velocity': 64, u'tick': 1, u'sub_type': u'noteOn', u'channel': 0, u'note_num': note})
+
+    try:
+        lyricLetter = hiraList[rowIndexHira][colIndexHira]
+    except IndexError:
+        rowIndexHira += 1
+        colIndexHira = 0
+        lyricLetter = hiraList[rowIndexHira][colIndexHira]
+
+    vsqxJson['stream'].append({u'velocity': 0, u'tick': duration + 1, u'sub_type': u'noteOff',
+                                u'channel': 0, u'note_num': note, u'lyrics': lyricLetter})
     colIndexHira += 1
 
-  mf.addNote(trackNo, 0, note, currTime / 480, duration / 480, 64)
-  
-  currTime += duration
+    mf.addNote(trackNo, 0, note, currTime / 480, duration / 480, 64)
+    currTime += duration
 
 
-with open(outputDir +"out.mid", 'wb') as outf:
-	mf.writeFile(outf)
- 
+with open(outputDir + "out.mid", 'wb') as outf:
+    mf.writeFile(outf)
 
-
-# We write the vsqx file
 vsqxData = json2vsqx.json2vsqx(vsqxJson)
-f = open(outputDir +'output.vsqx', 'wb')
+f = open(outputDir + 'output.vsqx', 'wb')
 f.write(vsqxData.toprettyxml('', '', 'utf-8'))
 f.close()
-

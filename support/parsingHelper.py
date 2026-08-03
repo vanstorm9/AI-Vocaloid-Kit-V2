@@ -118,13 +118,10 @@ def getLastWord(verse,tokenizer):
   #lastWord = parser.convert(verse)[-1]['hira']
   try:
     lastWord = tokenizer(verse)[-1]
-    #print(tokenizer(verse))
     if lastWord in specialCharList:
-      #return parser.convert(verse)[-2]['orig'] + parser.convert(verse)[-1]['orig']
       return tokenizer(verse)[-2] + tokenizer(verse)[-1]
-  except:
-
-    print('Problem in get last word for ', tokenizer(str(verse)))
+  except (IndexError, Exception) as e:
+    print('Problem in get last word for ', tokenizer(str(verse)), e)
     lastWord = ''
   return lastWord
 
@@ -136,8 +133,8 @@ def getFirstWord(verse,tokenizer):
   #firstWord = parser.convert(verse)[0]['orig']
   try:
     firstWord = tokenizer(verse)[0]
-  except:
-    print('Problem in get first word for ', tokenizer(verse))
+  except (IndexError, Exception) as e:
+    print('Problem in get first word for ', tokenizer(verse), e)
     firstWord = ''
   return firstWord
 
@@ -172,31 +169,18 @@ def firstWordFromCorpus(corpusTxt,resDict,hiraParser,tokenizer):
   for phrase in resList:
     try:
       phrase = str(phrase)
-    except:
-      #print('ErrorStr detected')
-      #print(phrase)
+    except ValueError:
       continue
     if phrase == '<EOS>':
       continue
     soundLen = getLengthJPWord(phrase,hiraParser)
     if soundLen in resDict:
-      # We already have sound number in dictionary
-       
       if phrase not in resDict[soundLen]:
-        # phrase does not exist in dictionary
-        #resDict[soundLen].append([phrase,1])
         resDict[soundLen][phrase] = 1
       else:
-        phrasefreq = resDict[soundLen][phrase] + 1
-        resDict[soundLen][phrase] = phrasefreq
-      
-      #resDict[soundLen].add(phrase)
-      
+        resDict[soundLen][phrase] += 1
     else:
-      # We don't have sound number in dictionary
       resDict[soundLen] = {phrase:1}
-      #resDict[soundLen] = {phrase}
-      #resDict[soundLen] = {phrase,1}
   return resDict
 
 
@@ -216,35 +200,20 @@ def lastWordFromCorpus(corpusTxt,resDict,hiraParser,tokenizer):
     #print('---',lastStr,'---')
   
   for phrase in resList:
-    
     try:
       phrase = str(phrase)
-    except:
-      #print('ErrorStr detected')
-      #print(phrase)
+    except ValueError:
       continue
-    #print('[',phrase,']')
     if phrase == '<EOS>':
       continue
     soundLen = getLengthJPWord(phrase,hiraParser)
     if soundLen in resDict:
-      # We already have sound number in dictionary
-       
       if phrase not in resDict[soundLen]:
-        # phrase does not exist in dictionary
-        #resDict[soundLen].append([phrase,1])
         resDict[soundLen][phrase] = 1
       else:
-        phrasefreq = resDict[soundLen][phrase] + 1
-        resDict[soundLen][phrase] = phrasefreq
-      
-      #resDict[soundLen].add(phrase)
-      
+        resDict[soundLen][phrase] += 1
     else:
-      # We don't have sound number in dictionary
       resDict[soundLen] = {phrase:1}
-      #resDict[soundLen] = {phrase}
-      #resDict[soundLen] = {phrase,1}
 
   return resDict
 
@@ -470,17 +439,14 @@ def getNextWord(wordList):
 
 def getNextWordWithList(probDict):
   if probDict is None:
-    probDict = {}
-    for k, v in wordList.items():
-      probDict[k] = v / sum(wordList.values())
-    
+    probDict = {k: v / sum(word_dict.values()) for k, v in word_dict.items()}
+
   labelList = list(probDict.keys())
   weights = list(probDict.values())
 
   chosenWord = punctPreprocess(random.choices(labelList, weights=weights, k=1)[0])
-  #chosenWord = random.choices(labelList, weights=weights, k=1)[0]
 
-  return chosenWord,probDict
+  return chosenWord, probDict
 
 
 
@@ -507,21 +473,11 @@ def getRandomWord(firstWordDict,syllableNum,word_dict):
   labelList = list(probDict.keys())
   weights = list(probDict.values())
 
-  while True:
-    #first_word = np.random.choice(list(firstWordDict[syllableNum]))
-    first_word = random.choices(labelList, weights=weights, k=1)[0]
-    #print(first_word)
-
-    chain = [first_word]
-    word = chain[-1]
-    #print(word_dict.keys())
-    #if word in word_dict and not isEnglish(word):
-    if word in word_dict and not hasEnglishWords(word,tagger):
-      return word
-    else:
-      #print('Failed ', word)
-      pass
-  return word
+  candidates = [w for w in labelList if w in word_dict and not hasEnglishWords(w, tagger)]
+  if not candidates:
+    return labelList[0] if labelList else ''
+  candidate_weights = [weights[labelList.index(w)] for w in candidates]
+  return random.choices(candidates, weights=candidate_weights, k=1)[0]
 
 def findAlternativeWord(word,syllable,wordLen,word_dict):
   if syllable - wordLen == 0:
@@ -580,13 +536,12 @@ def exploreList(wordList,syllable, resList,fullList):
 
   return resList
 
-def getNoteData(note, key,indexSecond,track):
-  #print(note.getElementsByTagName(key))
-  try:
-    return int(note.getElementsByTagName(key)[0].firstChild.data)
-  except:
-    secondIndDict = {'n':'noteNum','t':'posTick','dur':'durTick'}
-    return int(track.getElementsByTagName(secondIndDict[key])[indexSecond].firstChild.data)
+def getNoteData(note, key, indexSecond, track):
+    try:
+        return int(note.getElementsByTagName(key)[0].firstChild.data)
+    except (IndexError, AttributeError):
+        secondIndDict = {'n': 'noteNum', 't': 'posTick', 'dur': 'durTick'}
+        return int(track.getElementsByTagName(secondIndDict[key])[indexSecond].firstChild.data)
     
 def translate_sentence(sentence, src_field, trg_field, model, device, max_len = 50):
     
