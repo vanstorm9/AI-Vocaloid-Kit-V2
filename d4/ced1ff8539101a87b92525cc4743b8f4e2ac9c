@@ -1,0 +1,19 @@
+ARCHITECTURE.md
+  s_753de4564f7040::t_2fa54e28ad5e2e 1-121
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "d4ced1ff8539101a87b92525cc4743b8f4e2ac9c",
+  "prompts": {},
+  "sessions": {
+    "s_753de4564f7040": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2207cfea-d4c9-4ccc-97de-5d5c2346d784",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "alowhur-knowbe4 <alowhur@knowbe4.com>"
+    }
+  }
+}
