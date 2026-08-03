@@ -33,12 +33,14 @@ outputDir = './outputs/'
 parser = argparse.ArgumentParser(description='Commands for the vocaloid generator')
 parser.add_argument('--seed', dest="seed", action="store", default=None,
                     help='Use beginning notes to initalize melody generation.')
-parser.add_argument('--modelPath', dest="modelPath", action="store", default='savedModels/9-22-music.pt',
+parser.add_argument('--modelPath', dest="modelPath", action="store", default='savedModels/music-model.pt',
                     help='Path to the trained model')
 parser.add_argument('--dupThresh', dest="dupThresh", action="store", type=int, default=3,
                     help='Threshold to balance between note harmony and repeating melodies.')
 parser.add_argument('--numOfNotes', dest="numOfNotes", action="store", type=int, default=50,
                     help='Determines the number of notes/midi commands in the generated song')
+parser.add_argument('--temperature', dest="temperature", action="store", type=float, default=1.0,
+                    help='Sampling temperature (higher = more random, lower = more conservative)')
 
 args = parser.parse_args()
 
@@ -46,6 +48,7 @@ seedNotePath = args.seed
 dupThresh = args.dupThresh
 modelPath = args.modelPath
 setNum = args.numOfNotes
+temperature = args.temperature
 
 mainList = []
 
@@ -161,63 +164,74 @@ def generateCSVFile(df):
 
 """Now we will start decoding and construct a midi / vsqx file"""
 
-model = songDecoder.initalizeModel()
+from support.vocalVocab import VocaloidVocab, initialize_model, SOS_IDX, EOS_IDX, PAD_IDX
+
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-model.load_state_dict(torch.load(modelPath, map_location=device, weights_only=True))
+vocab = VocaloidVocab()
+
+checkpoint = torch.load(modelPath, map_location=device, weights_only=False)
+if isinstance(checkpoint, dict) and 'model_state' in checkpoint:
+    model = initialize_model(len(vocab), device)
+    model.load_state_dict(checkpoint['model_state'])
+else:
+    # Legacy state_dict format
+    print('Warning: loading legacy checkpoint format')
+    model = initialize_model(len(vocab), device)
+    model.load_state_dict(checkpoint)
+
+model.eval()
 print(f'The model has {songDecoder.count_parameters(model):,} trainable parameters')
 
-from torchtext.data import Field, BucketIterator
-import torchtext
+CONTEXT_LEN = 64
 
-SRC = Field(tokenize=songDecoder.tokenize_notes,
-            init_token='<sos>',
-            eos_token='<eos>',
-            lower=True,
-            batch_first=True)
 
-TRG = Field(tokenize=songDecoder.tokenize_notes,
-            init_token='<sos>',
-            eos_token='<eos>',
-            lower=True,
-            batch_first=True)
+def generate_notes(model, vocab, seed_tokens, num_notes, dup_thresh, device,
+                   temperature=1.0, context_len=CONTEXT_LEN):
+    """Autoregressively sample note tokens from the decoder-only model."""
+    result = list(seed_tokens)
+    dup_list = {}
 
-data_fields = [('src', SRC), ('trg', TRG)]
+    context = [vocab.encode(t) for t in seed_tokens]
+    context = context[-context_len:]
 
-train_data, test_data = torchtext.data.TabularDataset.splits(
-    path='./', train='dataset/trainNotes.csv', validation='dataset/valNotes.csv',
-    format='csv', fields=data_fields)
+    for step in range(num_notes):
+        ctx = torch.tensor([context[-context_len:]], dtype=torch.long, device=device)
+        with torch.no_grad():
+            logits = model(ctx)         # (1, T, vocab)
+        logits = logits[0, -1, :] / temperature
+        probs = torch.softmax(logits, dim=-1)
+        tok_idx = torch.multinomial(probs, 1).item()
+        tok = vocab.decode(tok_idx)
 
-valid_data = test_data
+        # duplicate check: re-sample once at higher temperature
+        dup_list = addTokensToDup([tok], dup_list, step)
+        dup, dup_list = isDuplicateSeq([tok], dup_list, step, dup_thresh)
+        if dup:
+            logits_hot = logits / (temperature * 1.5)
+            probs_hot = torch.softmax(logits_hot, dim=-1)
+            tok_idx = torch.multinomial(probs_hot, 1).item()
+            tok = vocab.decode(tok_idx)
 
-SRC.build_vocab(train_data, min_freq=2)
-TRG.build_vocab(train_data, min_freq=2)
+        if tok in ('<eos>', '<pad>', '<unk>'):
+            continue
 
-lenOfTokenList = len(TRG.vocab.itos)
+        result.append(tok)
+        context.append(tok_idx)
+
+    return result
+
+
 dupList = {}
 
 if len(mainList) <= 0:
-    mainList = [TRG.vocab.itos[i] for i in np.random.uniform(0, high=lenOfTokenList - 1, size=(7,)).astype(int).tolist()]
+    # Start from a random anchor token
+    import random as _random
+    anchor_tokens = [t for t in vocab.idx2tok if t.startswith('a')]
+    mainList = [_random.choice(anchor_tokens)]
 
-enableDuplicate = False
-
-prevSeq = mainList
-for i in range(0, setNum):
-    translation, attention = translate_sentence(prevSeq, SRC, TRG, model, device)
-
-    token = '|'.join(translation)
-    dupList = addTokensToDup(translation, dupList, i)
-
-    if not enableDuplicate:
-        dup, dupList = isDuplicateSeq(translation, dupList, i, dupThresh)
-        if dup:
-            randSeq = np.random.uniform(0, high=lenOfTokenList - 1, size=(7,)).astype(int)
-            prevSeq = [TRG.vocab.itos[i] for i in randSeq]
-            translation, attention = translate_sentence(prevSeq, SRC, TRG, model, device)
-            dupList = addTokensToDup(translation, dupList, i)
-
-    mainList = appendToMainList(mainList, translation)
-    prevSeq = translation
-    print(prevSeq)
+mainList = generate_notes(model, vocab, mainList, setNum, dupThresh, device,
+                          temperature=temperature)
+print(mainList)
 
 
 vsqxJson = {u'tracks': 1,
@@ -231,19 +245,29 @@ trackNo = 0
 mf.addTrackName(trackNo, tick_time, "Track {}".format(str(trackNo)))
 
 currTime = 5
+curr_pitch = 60  # running absolute pitch for interval decoding
 
 for noteTok in mainList:
     try:
-        note, duration = noteTok.split('/')
+        kind, dur_str = noteTok.split('/')
+        duration = int(dur_str[1:])
     except ValueError:
         continue
-    note = int(note[1:])
-    duration = int(duration[1:])
 
-    if note == 0:
+    if kind.startswith('r'):
         if duration > 2000:
             duration = 2000
         currTime += duration
+        continue
+
+    if kind.startswith('a'):
+        note = int(kind[1:])
+        curr_pitch = note
+    elif kind.startswith('i'):
+        interval = int(kind[1:])  # handles '+N' and '-N'
+        curr_pitch = max(0, min(127, curr_pitch + interval))
+        note = curr_pitch
+    else:
         continue
 
     duration += 150

@@ -1,24 +1,21 @@
 # -*- coding: utf-8 -*-
-import torch
-import torch.nn as nn
-import torch.optim as optim
+# python3 train.py --trainCsv dataset/trainNotes.csv --valCsv dataset/valNotes.csv
 
-import torchtext
-from torchtext.data import Field, BucketIterator
-
-import matplotlib.pyplot as plt
-import matplotlib.ticker as ticker
-
-import numpy as np
-import random
+import os
+import sys
 import math
 import time
+import random
 import argparse
 
-from support.model import (
-    Seq2Seq, Encoder, Decoder,
-    tokenize_notes, count_parameters, initialize_weights
-)
+import numpy as np
+import torch
+import torch.nn as nn
+from torch.utils.data import Dataset, DataLoader
+import pandas as pd
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from support.vocalVocab import VocaloidVocab, initialize_model, PAD_IDX, SOS_IDX, EOS_IDX
 
 SEED = 1234
 random.seed(SEED)
@@ -27,194 +24,104 @@ torch.manual_seed(SEED)
 torch.cuda.manual_seed(SEED)
 torch.backends.cudnn.deterministic = True
 
-parser = argparse.ArgumentParser(description='Commands for the vocaloid generator')
-parser.add_argument('--modelOutput', dest="modelOutput", action="store", default='music-model.pt',
-                    help='Output path for the trained model')
+parser = argparse.ArgumentParser(description='Train MusicTransformerGPT on note sequences')
+parser.add_argument('--trainCsv', dest='trainCsv', default='dataset/trainNotes.csv')
+parser.add_argument('--valCsv', dest='valCsv', default='dataset/valNotes.csv')
+parser.add_argument('--modelOutput', dest='modelOutput', default='savedModels/music-model.pt')
+parser.add_argument('--epochs', dest='epochs', type=int, default=30)
+parser.add_argument('--seqLen', dest='seqLen', type=int, default=64)
+parser.add_argument('--batchSize', dest='batchSize', type=int, default=64)
+parser.add_argument('--lr', dest='lr', type=float, default=3e-4)
 args = parser.parse_args()
-modelOutputPath = args.modelOutput
 
-SRC = Field(tokenize=tokenize_notes,
-            init_token='<sos>',
-            eos_token='<eos>',
-            lower=True,
-            batch_first=True)
-
-TRG = Field(tokenize=tokenize_notes,
-            init_token='<sos>',
-            eos_token='<eos>',
-            lower=True,
-            batch_first=True)
-
-data_fields = [('src', SRC), ('trg', TRG)]
-
-train_data, test_data = torchtext.data.TabularDataset.splits(
-    path='./', train='dataset/trainNotes.csv', validation='dataset/valNotes.csv',
-    format='csv', fields=data_fields)
-
-# Only two CSV splits exist (train/val); test_data == val_data is unavoidable until a third split is created
-valid_data = test_data
-
-SRC.build_vocab(train_data, min_freq=2)
-TRG.build_vocab(train_data, min_freq=2)
+os.makedirs(os.path.dirname(args.modelOutput) or '.', exist_ok=True)
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
-BATCH_SIZE = 128
-
-train_iterator, valid_iterator, test_iterator = BucketIterator.splits(
-    (train_data, valid_data, test_data),
-    batch_size=BATCH_SIZE,
-    sort=False,
-    device=device)
-
-INPUT_DIM = len(SRC.vocab)
-OUTPUT_DIM = len(TRG.vocab)
-HID_DIM = 256
-ENC_LAYERS = 3
-DEC_LAYERS = 3
-ENC_HEADS = 8
-DEC_HEADS = 8
-ENC_PF_DIM = 512
-DEC_PF_DIM = 512
-ENC_DROPOUT = 0.1
-DEC_DROPOUT = 0.1
-
-enc = Encoder(INPUT_DIM, HID_DIM, ENC_LAYERS, ENC_HEADS, ENC_PF_DIM, ENC_DROPOUT, device)
-dec = Decoder(OUTPUT_DIM, HID_DIM, DEC_LAYERS, DEC_HEADS, DEC_PF_DIM, DEC_DROPOUT, device)
-
-SRC_PAD_IDX = SRC.vocab.stoi[SRC.pad_token]
-TRG_PAD_IDX = TRG.vocab.stoi[TRG.pad_token]
-
-model = Seq2Seq(enc, dec, SRC_PAD_IDX, TRG_PAD_IDX, device).to(device)
-model.apply(initialize_weights)
-
-print(f'The model has {count_parameters(model):,} trainable parameters')
-
-LEARNING_RATE = 0.0005
-optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
-criterion = nn.CrossEntropyLoss(ignore_index=TRG_PAD_IDX)
+vocab = VocaloidVocab()
 
 
-def train(model, iterator, optimizer, criterion, clip):
-    model.train()
-    epoch_loss = 0
-    for i, batch in enumerate(iterator):
-        src = batch.src
-        trg = batch.trg
-        optimizer.zero_grad()
-        output, _ = model(src, trg[:, :-1])
-        output_dim = output.shape[-1]
-        output = output.contiguous().view(-1, output_dim)
-        trg = trg[:, 1:].contiguous().view(-1)
-        loss = criterion(output, trg)
-        loss.backward()
-        torch.nn.utils.clip_grad_norm_(model.parameters(), clip)
-        optimizer.step()
-        epoch_loss += loss.item()
-    return epoch_loss / len(iterator)
+class NoteSequenceDataset(Dataset):
+    def __init__(self, csv_path, vocab, seq_len):
+        df = pd.read_csv(csv_path)
+        self.vocab = vocab
+        self.seq_len = seq_len
+        self.sequences = df['seq'].tolist()
+
+    def __len__(self):
+        return len(self.sequences)
+
+    def __getitem__(self, idx):
+        tokens = self.sequences[idx].split('|')
+        # encode and pad/truncate to seq_len
+        ids = [self.vocab.encode(t) for t in tokens]
+        if len(ids) < self.seq_len:
+            ids = ids + [PAD_IDX] * (self.seq_len - len(ids))
+        else:
+            ids = ids[:self.seq_len]
+        t = torch.tensor(ids, dtype=torch.long)
+        return t[:-1], t[1:]  # input, target — decoder-only shift
 
 
-def evaluate(model, iterator, criterion):
-    model.eval()
-    epoch_loss = 0
-    with torch.no_grad():
-        for i, batch in enumerate(iterator):
-            src = batch.src
-            trg = batch.trg
-            output, _ = model(src, trg[:, :-1])
-            output_dim = output.shape[-1]
-            output = output.contiguous().view(-1, output_dim)
-            trg = trg[:, 1:].contiguous().view(-1)
+train_ds = NoteSequenceDataset(args.trainCsv, vocab, args.seqLen)
+val_ds = NoteSequenceDataset(args.valCsv, vocab, args.seqLen)
+
+train_loader = DataLoader(train_ds, batch_size=args.batchSize, shuffle=True, drop_last=True)
+val_loader = DataLoader(val_ds, batch_size=args.batchSize, shuffle=False, drop_last=False)
+
+model = initialize_model(len(vocab), device)
+print(f'Model has {sum(p.numel() for p in model.parameters() if p.requires_grad):,} trainable parameters')
+
+criterion = nn.CrossEntropyLoss(ignore_index=PAD_IDX)
+optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
+
+
+def run_epoch(model, loader, optimizer, criterion, train):
+    model.train() if train else model.eval()
+    total_loss = 0
+    with torch.set_grad_enabled(train):
+        for src, trg in loader:
+            src, trg = src.to(device), trg.to(device)
+            if train:
+                optimizer.zero_grad()
+            output = model(src)                       # (B, T-1, vocab)
+            output = output.reshape(-1, len(vocab))   # (B*(T-1), vocab)
+            trg = trg.reshape(-1)                     # (B*(T-1),)
             loss = criterion(output, trg)
-            epoch_loss += loss.item()
-    return epoch_loss / len(iterator)
+            if train:
+                loss.backward()
+                torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+                optimizer.step()
+            total_loss += loss.item()
+    return total_loss / len(loader)
 
 
-def epoch_time(start_time, end_time):
-    elapsed_time = end_time - start_time
-    elapsed_mins = int(elapsed_time / 60)
-    elapsed_secs = int(elapsed_time - (elapsed_mins * 60))
-    return elapsed_mins, elapsed_secs
+best_val_loss = float('inf')
 
+for epoch in range(args.epochs):
+    t0 = time.time()
+    train_loss = run_epoch(model, train_loader, optimizer, criterion, train=True)
+    val_loss = run_epoch(model, val_loader, optimizer, criterion, train=False)
+    elapsed = time.time() - t0
+    mins, secs = int(elapsed // 60), int(elapsed % 60)
 
-def translate_sentence(sentence, src_field, trg_field, model, device, max_len=50):
-    model.eval()
-    if isinstance(sentence, str):
-        tokens = [token.lower() for token in sentence.split("|")]
-    else:
-        tokens = [token.lower() for token in sentence]
-    tokens = [src_field.init_token] + tokens + [src_field.eos_token]
-    src_indexes = [src_field.vocab.stoi[token] for token in tokens]
-    src_tensor = torch.LongTensor(src_indexes).unsqueeze(0).to(device)
-    src_mask = model.make_src_mask(src_tensor)
-    with torch.no_grad():
-        enc_src = model.encoder(src_tensor, src_mask)
-    trg_indexes = [trg_field.vocab.stoi[trg_field.init_token]]
-    for i in range(max_len):
-        trg_tensor = torch.LongTensor(trg_indexes).unsqueeze(0).to(device)
-        trg_mask = model.make_trg_mask(trg_tensor)
-        with torch.no_grad():
-            output, attention = model.decoder(trg_tensor, enc_src, trg_mask, src_mask)
-        pred_token = output.argmax(2)[:, -1].item()
-        trg_indexes.append(pred_token)
-        if pred_token == trg_field.vocab.stoi[trg_field.eos_token]:
-            break
-    trg_tokens = [trg_field.vocab.itos[i] for i in trg_indexes]
-    return trg_tokens[1:], attention
+    if val_loss < best_val_loss:
+        best_val_loss = val_loss
+        torch.save({
+            'model_state': model.state_dict(),
+            'vocab': vocab.tok2idx,
+            'hparams': {
+                'vocab_size': len(vocab),
+                'hid_dim': 256,
+                'n_layers': 4,
+                'n_heads': 8,
+                'pf_dim': 512,
+                'dropout': 0.1,
+                'max_seq_len': 512,
+            },
+        }, args.modelOutput)
 
+    print(f'Epoch {epoch+1:02} | {mins}m {secs}s')
+    print(f'  Train Loss: {train_loss:.3f} | Train PPL: {math.exp(train_loss):7.3f}')
+    print(f'    Val Loss: {val_loss:.3f} |   Val PPL: {math.exp(val_loss):7.3f}')
 
-def display_attention(sentence, translation, attention, n_heads=8, n_rows=4, n_cols=2):
-    assert n_rows * n_cols == n_heads
-    fig = plt.figure(figsize=(15, 25))
-    for i in range(n_heads):
-        ax = fig.add_subplot(n_rows, n_cols, i + 1)
-        _attention = attention.squeeze(0)[i].cpu().detach().numpy()
-        cax = ax.matshow(_attention, cmap='bone')
-        ax.tick_params(labelsize=12)
-        ax.set_xticklabels([''] + ['<sos>'] + [t.lower() for t in sentence] + ['<eos>'], rotation=45)
-        ax.set_yticklabels([''] + translation)
-        ax.xaxis.set_major_locator(ticker.MultipleLocator(1))
-        ax.yaxis.set_major_locator(ticker.MultipleLocator(1))
-    plt.show()
-    plt.close()
-
-
-N_EPOCHS = 53
-CLIP = 1
-best_valid_loss = float('inf')
-
-for epoch in range(N_EPOCHS):
-    start_time = time.time()
-    train_loss = train(model, train_iterator, optimizer, criterion, CLIP)
-    valid_loss = evaluate(model, valid_iterator, criterion)
-    end_time = time.time()
-    epoch_mins, epoch_secs = epoch_time(start_time, end_time)
-    if valid_loss < best_valid_loss:
-        best_valid_loss = valid_loss
-        torch.save(model.state_dict(), modelOutputPath)
-    print(f'Epoch: {epoch + 1:02} | Time: {epoch_mins}m {epoch_secs}s')
-    print(f'\tTrain Loss: {train_loss:.3f} | Train PPL: {math.exp(train_loss):7.3f}')
-    print(f'\t Val. Loss: {valid_loss:.3f} |  Val. PPL: {math.exp(valid_loss):7.3f}')
-
-model.load_state_dict(torch.load(modelOutputPath, weights_only=True))
-test_loss = evaluate(model, test_iterator, criterion)
-print(f'| Test Loss: {test_loss:.3f} | Test PPL: {math.exp(test_loss):7.3f} |')
-
-from torchtext.data.metrics import bleu_score as torchtext_bleu_score
-
-
-def calculate_bleu(data, src_field, trg_field, model, device, max_len=50):
-    trgs = []
-    pred_trgs = []
-    for datum in data:
-        src = vars(datum)['src']
-        trg = vars(datum)['trg']
-        pred_trg, _ = translate_sentence(src, src_field, trg_field, model, device, max_len)
-        pred_trg = pred_trg[:-1]
-        pred_trgs.append(pred_trg)
-        trgs.append([trg])
-    return torchtext_bleu_score(pred_trgs, trgs)
-
-
-bleu = calculate_bleu(test_data, SRC, TRG, model, device)
-print(f'BLEU score = {bleu * 100:.2f}')
+print(f'Best val loss: {best_val_loss:.3f} | Best val PPL: {math.exp(best_val_loss):7.3f}')

@@ -70,7 +70,7 @@ class MultiHeadAttentionLayer(nn.Module):
         self.dropout = nn.Dropout(dropout)
         self.scale = torch.sqrt(torch.FloatTensor([self.head_dim])).to(device)
 
-    def forward(self, query, key, value, mask=None):
+    def forward(self, query, key, value, mask=None, rel_bias=None):
         batch_size = query.shape[0]
         Q = self.fc_q(query)
         K = self.fc_k(key)
@@ -79,6 +79,8 @@ class MultiHeadAttentionLayer(nn.Module):
         K = K.view(batch_size, -1, self.n_heads, self.head_dim).permute(0, 2, 1, 3)
         V = V.view(batch_size, -1, self.n_heads, self.head_dim).permute(0, 2, 1, 3)
         energy = torch.matmul(Q, K.permute(0, 1, 3, 2)) / self.scale
+        if rel_bias is not None:
+            energy = energy + rel_bias
         if mask is not None:
             energy = energy.masked_fill(mask == 0, -1e10)
         attention = torch.softmax(energy, dim=-1)
@@ -174,3 +176,81 @@ class Seq2Seq(nn.Module):
         enc_src = self.encoder(src, src_mask)
         output, attention = self.decoder(trg, enc_src, trg_mask, src_mask)
         return output, attention
+
+
+# ── Decoder-only GPT-style architecture for music generation ──────────────────
+
+class RelativeAttentionBias(nn.Module):
+    """T5-style learned relative position bias table."""
+
+    def __init__(self, n_heads, max_rel_dist=64):
+        super().__init__()
+        self.n_heads = n_heads
+        self.max_rel_dist = max_rel_dist
+        # table covers [-max_rel_dist, max_rel_dist], so 2*max+1 entries
+        self.bias_table = nn.Embedding(2 * max_rel_dist + 1, n_heads)
+
+    def forward(self, seq_len):
+        pos = torch.arange(seq_len, device=self.bias_table.weight.device)
+        rel = pos.unsqueeze(0) - pos.unsqueeze(1)  # (T, T)
+        rel = rel.clamp(-self.max_rel_dist, self.max_rel_dist) + self.max_rel_dist
+        bias = self.bias_table(rel)                 # (T, T, n_heads)
+        return bias.permute(2, 0, 1).unsqueeze(0)   # (1, n_heads, T, T)
+
+
+class GPTDecoderLayer(nn.Module):
+    """Pre-norm decoder layer with self-attention only (no cross-attention)."""
+
+    def __init__(self, hid_dim, n_heads, pf_dim, dropout, device):
+        super().__init__()
+        self.self_attn_norm = nn.LayerNorm(hid_dim)
+        self.ff_norm = nn.LayerNorm(hid_dim)
+        self.self_attention = MultiHeadAttentionLayer(hid_dim, n_heads, dropout, device)
+        self.positionwise_feedforward = PositionwiseFeedforwardLayer(hid_dim, pf_dim, dropout)
+        self.dropout = nn.Dropout(dropout)
+
+    def forward(self, x, mask, rel_bias=None):
+        _x, _ = self.self_attention(
+            self.self_attn_norm(x),
+            self.self_attn_norm(x),
+            self.self_attn_norm(x),
+            mask,
+            rel_bias,
+        )
+        x = x + self.dropout(_x)
+        _x = self.positionwise_feedforward(self.ff_norm(x))
+        x = x + self.dropout(_x)
+        return x
+
+
+class MusicTransformerGPT(nn.Module):
+    """Decoder-only transformer for autoregressive music token generation."""
+
+    def __init__(self, vocab_size, hid_dim=256, n_layers=4, n_heads=8,
+                 pf_dim=512, dropout=0.1, max_seq_len=512, device='cpu'):
+        super().__init__()
+        self.device = device
+        self.tok_embedding = nn.Embedding(vocab_size, hid_dim)
+        self.rel_bias = RelativeAttentionBias(n_heads, max_rel_dist=max_seq_len)
+        self.layers = nn.ModuleList([
+            GPTDecoderLayer(hid_dim, n_heads, pf_dim, dropout, device)
+            for _ in range(n_layers)
+        ])
+        self.norm = nn.LayerNorm(hid_dim)
+        self.fc_out = nn.Linear(hid_dim, vocab_size)
+        self.dropout = nn.Dropout(dropout)
+        self.scale = torch.sqrt(torch.FloatTensor([hid_dim])).to(device)
+
+    def make_causal_mask(self, seq_len):
+        mask = torch.tril(torch.ones(seq_len, seq_len, device=self.device)).bool()
+        return mask.unsqueeze(0).unsqueeze(0)  # (1, 1, T, T) — broadcast over batch+heads
+
+    def forward(self, x):
+        seq_len = x.shape[1]
+        mask = self.make_causal_mask(seq_len)
+        rel_bias = self.rel_bias(seq_len)
+        x = self.dropout(self.tok_embedding(x) * self.scale)
+        for layer in self.layers:
+            x = layer(x, mask, rel_bias)
+        x = self.norm(x)
+        return self.fc_out(x)  # (B, T, vocab_size)

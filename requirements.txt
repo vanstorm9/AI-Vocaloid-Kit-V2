@@ -36,9 +36,8 @@ sniffio==1.2.0
 spacy==2.3.2
 srsly==1.0.2
 thinc==7.4.1
-torch==1.7.0
-torchtext==0.8.0
-torchvision==0.8.1
+mido>=1.3.0
+torch>=2.0.0
 tqdm==4.51.0
 typing-extensions==3.7.4.3
 unidic-lite==1.0.7

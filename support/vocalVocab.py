@@ -1,0 +1,124 @@
+# -*- coding: utf-8 -*-
+import bisect
+
+DURATION_BINS = [30, 60, 90, 120, 150, 180, 210, 240, 270, 300,
+                 360, 420, 480, 540, 600, 720, 840, 960, 1080, 1200,
+                 1440, 1680, 1920, 2160, 2400, 2880, 3360, 3840,
+                 4320, 4800, 5760, 9601]  # 32 bins; last catches >=9601 ticks
+INTERVAL_RANGE = 12  # semitones, clamped
+
+PAD_IDX, SOS_IDX, EOS_IDX, UNK_IDX = 0, 1, 2, 3
+_SPECIALS = ['<pad>', '<sos>', '<eos>', '<unk>']
+
+
+def _quantize_duration(raw_ticks):
+    """Map raw tick count to nearest DURATION_BINS entry (floor)."""
+    idx = bisect.bisect_right(DURATION_BINS, raw_ticks) - 1
+    return DURATION_BINS[max(0, min(idx, len(DURATION_BINS) - 1))]
+
+
+def _build_vocab_list():
+    toks = list(_SPECIALS)
+    # a{pitch}/d{bin} — anchor token for first note (absolute pitch + duration)
+    for pitch in range(85):
+        for dur in DURATION_BINS:
+            toks.append(f'a{pitch}/d{dur}')
+    # i{+/-N}/d{bin} — interval from previous note + duration
+    for interval in range(-INTERVAL_RANGE, INTERVAL_RANGE + 1):
+        sign = '+' if interval >= 0 else ''
+        for dur in DURATION_BINS:
+            toks.append(f'i{sign}{interval}/d{dur}')
+    # r/d{bin} — rest of given duration
+    for dur in DURATION_BINS:
+        toks.append(f'r/d{dur}')
+    return toks
+
+
+class VocaloidVocab:
+    def __init__(self):
+        toks = _build_vocab_list()
+        self.tok2idx = {t: i for i, t in enumerate(toks)}
+        self.idx2tok = toks
+
+    def __len__(self):
+        return len(self.idx2tok)
+
+    @staticmethod
+    def quantize_duration(raw_ticks):
+        return _quantize_duration(raw_ticks)
+
+    def encode(self, tok):
+        return self.tok2idx.get(tok, UNK_IDX)
+
+    def decode(self, idx):
+        if 0 <= idx < len(self.idx2tok):
+            return self.idx2tok[idx]
+        return '<unk>'
+
+
+def tokens_from_notes(notes):
+    """Convert (pitch, start_tick, duration) list to interval-encoded token strings.
+
+    First note -> a{pitch}/d{bin}; subsequent notes -> i{+/-N}/d{bin};
+    gaps between notes -> r/d{bin}.
+    """
+    if not notes:
+        return []
+    tokens = []
+    prev_pitch = None
+    prev_end = None
+    for pitch, start, duration in notes:
+        dur_bin = _quantize_duration(duration)
+        if prev_end is not None and start > prev_end:
+            rest_bin = _quantize_duration(start - prev_end)
+            tokens.append(f'r/d{rest_bin}')
+        if prev_pitch is None:
+            tokens.append(f'a{pitch}/d{dur_bin}')
+        else:
+            interval = max(-INTERVAL_RANGE, min(INTERVAL_RANGE, pitch - prev_pitch))
+            sign = '+' if interval >= 0 else ''
+            tokens.append(f'i{sign}{interval}/d{dur_bin}')
+        prev_pitch = pitch
+        prev_end = start + duration
+    return tokens
+
+
+def notes_from_tokens(tokens, anchor_pitch=60):
+    """Reconstruct (pitch, start_tick, duration) from interval-encoded tokens."""
+    notes = []
+    curr_pitch = anchor_pitch
+    curr_tick = 0
+    for tok in tokens:
+        if tok in _SPECIALS:
+            continue
+        try:
+            kind, dur_str = tok.split('/')
+            dur = int(dur_str[1:])
+        except (ValueError, IndexError):
+            continue
+        if kind.startswith('r'):
+            curr_tick += dur
+        elif kind.startswith('a'):
+            curr_pitch = int(kind[1:])
+            notes.append((curr_pitch, curr_tick, dur))
+            curr_tick += dur
+        elif kind.startswith('i'):
+            interval = int(kind[1:])  # handles both '+N' and '-N'
+            curr_pitch = max(0, min(127, curr_pitch + interval))
+            notes.append((curr_pitch, curr_tick, dur))
+            curr_tick += dur
+    return notes
+
+
+def initialize_model(vocab_size, device):
+    from support.model import MusicTransformerGPT
+    return MusicTransformerGPT(
+        vocab_size=vocab_size,
+        hid_dim=256,
+        n_layers=4,
+        n_heads=8,
+        pf_dim=512,
+        dropout=0.1,
+        max_seq_len=512,
+        device=device,
+    ).to(device)
