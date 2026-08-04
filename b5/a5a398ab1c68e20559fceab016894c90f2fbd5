@@ -1,0 +1,27 @@
+support/parsingHelper.py
+  s_753de4564f7040::t_8fd4ca4bb12214 4-8
+  s_753de4564f7040::t_866fbb17fb70f0 156
+  s_753de4564f7040::t_5d81c270d9219b 38-42
+  s_753de4564f7040::t_27649cbac9ce82 43
+main.py
+  s_753de4564f7040::t_7544026abd2b7b 469-470,472
+scripts/train.py
+  s_753de4564f7040::t_d13f500e8d35fd 41-47
+  s_753de4564f7040::t_9352029d88eb89 31-33,84-103,125,129,132,138-140,153
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "b5a5a398ab1c68e20559fceab016894c90f2fbd5",
+  "prompts": {},
+  "sessions": {
+    "s_753de4564f7040": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2207cfea-d4c9-4ccc-97de-5d5c2346d784",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "alowhur-knowbe4 <alowhur@knowbe4.com>"
+    }
+  }
+}
