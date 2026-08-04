@@ -19,7 +19,9 @@ parser = argparse.ArgumentParser(description='Convert VSQX/MIDI directory to a n
 parser.add_argument('--vsqxDir', dest='vsqxDir', default='All-songs/',
                     help='Directory containing VSQX files')
 parser.add_argument('--midiDir', dest='midiDir', default=None,
-                    help='Optional directory containing MIDI files (uses extractVocalMidi)')
+                    help='Optional directory containing MIDI files (uses extractVocalMidi, recursive)')
+parser.add_argument('--midiTokenDir', dest='midiTokenDir', default=None,
+                    help='Optional directory of pre-extracted token .txt files (from extractVocalMidi.py --outputDir)')
 parser.add_argument('--seqLen', dest='seqLen', type=int, default=64,
                     help='Number of tokens per sequence window')
 parser.add_argument('--stride', dest='stride', type=int, default=8,
@@ -93,13 +95,27 @@ for i, fileName in enumerate(os.listdir(rootDir)):
     windows = _notes_to_windows(notes, seqLen, stride)
     all_windows.extend(windows)
 
-if args.midiDir and os.path.isdir(args.midiDir):
+if args.midiTokenDir and os.path.isdir(args.midiTokenDir):
+    token_files = [f for f in os.listdir(args.midiTokenDir) if f.endswith('.txt')]
+    print(f'Processing {len(token_files)} pre-extracted token files from {args.midiTokenDir}')
+    for j, fname in enumerate(token_files):
+        with open(os.path.join(args.midiTokenDir, fname)) as f:
+            tokens = f.read().strip().split('|')
+        for start in range(0, len(tokens) - seqLen + 1, stride):
+            window = tokens[start:start + seqLen]
+            if len(window) == seqLen:
+                all_windows.append('|'.join(window))
+        if j % 1000 == 0:
+            print(f'  token file {j}/{len(token_files)}')
+elif args.midiDir and os.path.isdir(args.midiDir):
     from scripts.extractVocalMidi import extract_and_tokenize
-    midi_files = [f for f in os.listdir(args.midiDir)
-                  if f.lower().endswith(('.mid', '.midi'))]
+    midi_files = []
+    for dp, _ds, fs in os.walk(args.midiDir):
+        for f in fs:
+            if f.lower().endswith(('.mid', '.midi')):
+                midi_files.append(os.path.join(dp, f))
     print(f'Processing {len(midi_files)} MIDI files from {args.midiDir}')
-    for j, fname in enumerate(midi_files):
-        midi_path = os.path.join(args.midiDir, fname)
+    for j, midi_path in enumerate(midi_files):
         tokens = extract_and_tokenize(midi_path)
         if not tokens:
             continue
@@ -107,7 +123,7 @@ if args.midiDir and os.path.isdir(args.midiDir):
             window = tokens[start:start + seqLen]
             if len(window) == seqLen:
                 all_windows.append('|'.join(window))
-        if j % 100 == 0:
+        if j % 500 == 0:
             print(f'  MIDI {j}/{len(midi_files)}')
 
 if not all_windows:

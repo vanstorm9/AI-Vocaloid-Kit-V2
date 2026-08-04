@@ -137,17 +137,22 @@ if __name__ == '__main__':
     processed = 0
     skipped = 0
 
-    for fname in os.listdir(args.midiDir):
-        if not fname.lower().endswith(('.mid', '.midi')):
-            continue
-        path = os.path.join(args.midiDir, fname)
-        tokens = extract_and_tokenize(path)
-        if not tokens:
-            skipped += 1
-            continue
-        out_path = os.path.join(args.outputDir, fname.rsplit('.', 1)[0] + '.txt')
-        with open(out_path, 'w') as f:
-            f.write('|'.join(tokens))
-        processed += 1
+    for dirpath, _dirs, files in os.walk(args.midiDir):
+        for fname in files:
+            if not fname.lower().endswith(('.mid', '.midi')):
+                continue
+            path = os.path.join(dirpath, fname)
+            tokens = extract_and_tokenize(path)
+            if not tokens:
+                skipped += 1
+                continue
+            # Flatten artist/song path into a unique output filename
+            rel = os.path.relpath(path, args.midiDir).replace(os.sep, '_')
+            out_path = os.path.join(args.outputDir, rel.rsplit('.', 1)[0] + '.txt')
+            with open(out_path, 'w') as f:
+                f.write('|'.join(tokens))
+            processed += 1
+            if (processed + skipped) % 500 == 0:
+                print(f'  ...{processed} extracted, {skipped} skipped', flush=True)
 
     print(f'Extracted {processed} files, skipped {skipped}')
