@@ -1,0 +1,26 @@
+requirements.txt
+  s_753de4564f7040::t_78320156b7398d 40-42
+support/lyricGenerator.py
+  s_753de4564f7040::t_ffa276357e3536 1-11,15-126
+  s_753de4564f7040::t_00320a9a6d7f9d 12-14
+main.py
+  s_753de4564f7040::t_bbb3d70eb99360 44-47
+  s_753de4564f7040::t_c8aad850fdc2ec 56-57
+  s_753de4564f7040::t_9b6be2363ae34b 393-396,403,406-407,413-414
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "1984c8558d66455ec1b46667a78301f6d82d3ea0",
+  "prompts": {},
+  "sessions": {
+    "s_753de4564f7040": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2207cfea-d4c9-4ccc-97de-5d5c2346d784",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "alowhur-knowbe4 <alowhur@knowbe4.com>"
+    }
+  }
+}
