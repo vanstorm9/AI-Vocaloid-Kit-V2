@@ -41,6 +41,10 @@ parser.add_argument('--numOfNotes', dest="numOfNotes", action="store", type=int,
                     help='Determines the number of notes/midi commands in the generated song')
 parser.add_argument('--temperature', dest="temperature", action="store", type=float, default=1.0,
                     help='Sampling temperature (higher = more random, lower = more conservative)')
+parser.add_argument('--theme', dest="theme", action="store", default='青春',
+                    help='Lyric generation theme (Japanese text, e.g. 青春, 夜, 恋)')
+parser.add_argument('--llmModel', dest="llmModel", action="store", default='qwen2.5:7b',
+                    help='Ollama model name for lyric generation')
 
 args = parser.parse_args()
 
@@ -49,6 +53,8 @@ dupThresh = args.dupThresh
 modelPath = args.modelPath
 setNum = args.numOfNotes
 temperature = args.temperature
+theme = args.theme
+llmModel = args.llmModel
 
 mainList = []
 
@@ -384,30 +390,28 @@ prevTime, durTime, timeOffset, noteDict, tokenDict, tokenSeq, i = params
 noteNewClusterList = divideListCluster(noteClusterList)
 countList = combineSmallNoteClusterCount(noteNewClusterList)
 
+from support.lyricGenerator import QwenLyricGenerator, count_morae
+
+lyric_gen = QwenLyricGenerator(model=llmModel, theme=theme)
+
 kanjiTxt = open(outputDir + 'kanji-lyrics.txt', 'w')
 hiraTxt = open(outputDir + 'hira-lyrics.txt', 'w')
 
 hiraList = []
 
-lengthWord = 3
-initalWord = None
 for countNum in countList:
-    if countNum < lengthWord:
-        resStr, sumNum = generateLyric(countNum, countNum, None, kks)
-    else:
-        resStr, sumNum = generateLyric(countNum, lengthWord, initalWord, kks)
-
-    initalWord = str(getLastWord(resStr, tagger))
+    resStr = lyric_gen.generate_phrase(countNum)
     resStr = resStr.replace('\n', '')
 
-    hiraTxt.write(convertToHira(resStr, kks))
+    hiraStr = jaconv.kata2hira(convertToHira(resStr, kks))
+    hiraTxt.write(hiraStr)
     kanjiTxt.write(resStr)
 
-    hiraStr = jaconv.kata2hira(convertToHira(resStr, kks))
     tokenizerList = hiraTokenizer(hiraStr)
     hiraList.append(tokenizerList)
 
-    print('[', resStr, ']')
+    actual_morae = count_morae(resStr)
+    print(f'[{resStr}]  ({actual_morae}/{countNum} morae)')
 
 hiraTxt.close()
 kanjiTxt.close()
