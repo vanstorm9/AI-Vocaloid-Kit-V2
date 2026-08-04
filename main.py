@@ -297,7 +297,6 @@ f.close()
 
 """We start making the corpus"""
 
-tagger = fugashi.Tagger()
 newCorpus = False
 
 lyricDir = './lyric-data/'
@@ -467,9 +466,10 @@ for i, noteTok in enumerate(tokenSeq):
     try:
         lyricLetter = hiraList[rowIndexHira][colIndexHira]
     except IndexError:
-        rowIndexHira += 1
+        # Lyrics exhausted — wrap around to the beginning
+        rowIndexHira = 0
         colIndexHira = 0
-        lyricLetter = hiraList[rowIndexHira][colIndexHira]
+        lyricLetter = hiraList[0][0] if hiraList and hiraList[0] else 'あ'
 
     vsqxJson['stream'].append({u'velocity': 0, u'tick': duration + 1, u'sub_type': u'noteOff',
                                 u'channel': 0, u'note_num': note, u'lyrics': lyricLetter})

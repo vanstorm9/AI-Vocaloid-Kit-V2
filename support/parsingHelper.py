@@ -1,7 +1,11 @@
 import fugashi
 import os
 import pykakasi
-from googletrans import Translator
+try:
+    from googletrans import Translator
+    _googletrans_available = True
+except Exception:
+    _googletrans_available = False
 import torch
 
 from midiutil import MIDIFile
@@ -31,8 +35,12 @@ word_dict = pickle.load( open( savedModelDir+"word_dict.pkl", "rb" ) )
 
 
 kks = pykakasi.kakasi()
-tagger = fugashi.Tagger()
-translator = Translator()
+try:
+    tagger = fugashi.Tagger()
+except RuntimeError:
+    import unidic_lite
+    tagger = fugashi.GenericTagger(f'-d {unidic_lite.DICDIR}')
+translator = Translator() if _googletrans_available else None
 
 
 
@@ -145,7 +153,7 @@ def translateToJapanese(word,hiraParser):
   
   for kanaStr in hiraParser.convert(word):
     if kanaStr and isEnglish(kanaStr['orig']) and (not kanaStr['orig'].replace(' ','').isdecimal()):
-      resStr += translator.translate(kanaStr['orig'].lower(),dest='ja').text
+      resStr += translator.translate(kanaStr['orig'].lower(),dest='ja').text if translator else kanaStr['orig']
       #print('English: ',kanaStr['orig'],'  ', resStr)
     else:
       resStr += kanaStr['orig']
