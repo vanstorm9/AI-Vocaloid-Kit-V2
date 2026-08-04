@@ -1,0 +1,24 @@
+.gitignore
+  s_753de4564f7040::t_161d8945685fe0 1-4
+scripts/extractVocalMidi.py
+  s_753de4564f7040::t_52a63d97aefb70 140-156
+scripts/datasetConvert.py
+  s_753de4564f7040::t_0f8a07ce2292dc 98-110,112-116,118,126
+  s_753de4564f7040::t_5640de9ed50e9a 22-24
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "13984c23e8f65fbc9a7933b9b41b5cf72c981836",
+  "prompts": {},
+  "sessions": {
+    "s_753de4564f7040": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2207cfea-d4c9-4ccc-97de-5d5c2346d784",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "alowhur-knowbe4 <alowhur@knowbe4.com>"
+    }
+  }
+}
