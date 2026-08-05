@@ -1,0 +1,29 @@
+support/vocalVocab.py
+  s_753de4564f7040::t_d296f3e3a98338 113-114,118-123
+scripts/train.py
+  s_753de4564f7040::t_62516a33494ea1 82-84
+  s_753de4564f7040::t_4d0848dd2b10f2 150-153
+  s_753de4564f7040::t_6ab4f0199a52e5 37-40
+main.py
+  s_753de4564f7040::t_62fcb2eb7bedf4 269
+  s_753de4564f7040::t_47b033ac88e3e1 209-219,221,234-237
+  s_753de4564f7040::t_fd145567ecbbc8 60
+  s_753de4564f7040::t_f4d17d8f917c11 178-184,189-196
+  s_753de4564f7040::t_70734ef029fe97 48-49
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "c7e5556bf96425896dcc0063c7b18f22df11ee78",
+  "prompts": {},
+  "sessions": {
+    "s_753de4564f7040": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2207cfea-d4c9-4ccc-97de-5d5c2346d784",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "alowhur-knowbe4 <alowhur@knowbe4.com>"
+    }
+  }
+}
