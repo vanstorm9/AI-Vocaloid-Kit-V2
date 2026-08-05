@@ -30,7 +30,7 @@ Identify the failure mode. Is it:
 
 ### Step 2 — Spawn a targeted research agent
 
-Launch a general-purpose agent with a prompt that includes:
+Launch a general-purpose agent. **Instruct it to actively search arXiv, Semantic Scholar, and GitHub** for recent papers on the diagnosed failure mode — don't rely only on training knowledge. Include in the prompt:
 1. The diagnosed failure mode from Step 1
 2. Current constraints: ~16M param budget, 330k training sequences, interval-encoded MIDI tokens (a/i/r format), MPS training on Apple Silicon, decoder-only GPT baseline
 3. Request: survey state-of-the-art symbolic music generation architectures (Music Transformer, REMI/Pop Music Transformer, Compound Word Transformer, FIGARO, MusicBERT, hierarchical models, diffusion in symbolic space) and return ranked alternatives that specifically address the diagnosed failure mode
