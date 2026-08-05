@@ -1,42 +1,56 @@
 # music-arch-advisor
 
-Trigger: `/music-arch-advisor`, "what architecture should we use", "recommend a better model", "research music generation architectures", "what's the state of the art for music generation"
+**When to invoke:** When the current architecture or training method is producing unsatisfactory results and we need to decide what to try next. This is a pivot-decision tool, not a general research query.
+
+Trigger: `/music-arch-advisor`, "this architecture isn't working", "what should we switch to", "recommend an alternative architecture", "the model quality is bad, what do we do next"
 
 ## What this skill does
 
-Spawns a research agent that surveys the state-of-the-art in neural music generation and returns ranked architectural recommendations tailored to this project's constraints (16M param decoder-only GPT, 330k training sequences, interval-encoded MIDI tokens, MPS training on Apple Silicon).
+Reads the current project state (training logs, architecture, loss curves), diagnoses *why* the current approach is underperforming, then spawns a research agent that returns ranked alternative architectures and training methods — specifically filtered for this project's constraints.
 
 ## Instructions
 
-When triggered, run the following steps:
+### Step 1 — Diagnose the current approach
 
-### Step 1 — Assess current project state
+Read these files to understand what's failing before recommending anything:
+- `DECISIONS.md` — **read this first** to see what has already been tried; never re-recommend an approach listed there
+- `train.log`, `train2.log`, `train3.log` (most recent training metrics — look for plateau, overfitting, divergence)
+- `ARCHITECTURE.md` (what we're currently running)
+- `support/model.py` (implementation details)
+- `support/vocalVocab.py` (encoding scheme)
+- `outputs/out.mid` analysis if available (qualitative output issues)
 
-Read these files to understand where the project currently stands before giving recommendations:
-- `ARCHITECTURE.md` — current model design
-- `support/model.py` — current model implementation
-- `support/vocalVocab.py` — vocab and encoding scheme
-- `train.log` and `train2.log` and `train3.log` (if they exist) — latest training metrics
+Identify the failure mode. Is it:
+- **Plateau** — loss stopped improving, model needs more capacity or better encoding
+- **Repetition** — model loops; structural modeling is too local
+- **Range collapse** — model always generates in a narrow pitch range
+- **Rhythm collapse** — all notes same duration
+- **Poor phrase structure** — no long-range coherence
+- **Overfitting** — train/val gap too large
 
-### Step 2 — Spawn research agent
+### Step 2 — Spawn a targeted research agent
 
-Launch a general-purpose agent with this prompt:
+Launch a general-purpose agent with a prompt that includes:
+1. The diagnosed failure mode from Step 1
+2. Current constraints: ~16M param budget, 330k training sequences, interval-encoded MIDI tokens (a/i/r format), MPS training on Apple Silicon, decoder-only GPT baseline
+3. Request: survey state-of-the-art symbolic music generation architectures (Music Transformer, REMI/Pop Music Transformer, Compound Word Transformer, FIGARO, MusicBERT, hierarchical models, diffusion in symbolic space) and return ranked alternatives that specifically address the diagnosed failure mode
 
-> You are an expert ML researcher in neural music generation. Survey the state-of-the-art symbolic and audio-domain music generation architectures (Music Transformer, REMI, MusicGen, DiffSinger, Jukebox, MusicBERT, Compound Word Transformer, FIGARO, MuseNet, SymphonyNet, and others). For each, note: key innovation, quality level (1-5 stars), and feasibility given a ~16M param budget and 330k training sequences.
->
-> Then produce a ranked Top 5 list of what this specific project should adopt next if the current approach plateaus, with implementation difficulty (Easy/Medium/Hard) and expected quality gain. Focus especially on: better encoding schemes, hierarchical structure modeling, conditioning mechanisms, and training techniques. Be specific and cite papers.
+The agent should return for each recommendation:
+- What to adopt and why it fixes the specific failure mode
+- Implementation difficulty (Easy = swap a component / Medium = rewrite training loop / Hard = new architecture from scratch)
+- Expected quality gain vs current approach
+- Whether it requires retraining from scratch or can be layered on top
+- A "Why now" field: why this specifically addresses the current failure mode (not generic praise)
 
-### Step 3 — Synthesize and present findings
+After the skill completes, update `DECISIONS.md` with whatever was decided and the reasoning.
 
-Once the research agent completes, present:
+### Step 3 — Present a decision
 
-1. **Current architecture assessment** — strengths and known limitations of our decoder-only GPT with interval encoding based on what the research found
-2. **Top 5 recommendations** — ranked by (quality gain × feasibility), each with:
-   - What to adopt
-   - Why it fits our constraints
-   - Implementation effort
-   - Expected improvement
-3. **Quick wins** — things we can add to the existing architecture without retraining from scratch (e.g. conditioning tokens, better encoding, inference tricks)
-4. **Longer-term bets** — architectures worth a full rewrite if we want to hit production quality
+Synthesize the research agent's findings into a clear recommendation:
 
-Keep the output concise and actionable. No need to explain what every paper is about in depth — focus on the recommendation and the reasoning.
+1. **Root cause** — one sentence on why the current approach is failing
+2. **Recommended next step** — the single highest-confidence recommendation with implementation plan
+3. **Alternatives** — 2-3 other options ranked by (quality gain × implementation effort)
+4. **What NOT to do** — approaches that sound promising but don't fit our constraints
+
+Keep it short and decisive. The goal is to walk away with a clear next action, not an exhaustive survey.
