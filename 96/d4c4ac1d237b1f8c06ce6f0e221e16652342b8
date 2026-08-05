@@ -1,0 +1,44 @@
+scripts/datasetConvert.py
+  s_753de4564f7040::t_65bdffa330c7e6 2,89-114,116-192
+  s_753de4564f7040::t_c9c148b52198e4 19-20,22-41
+scripts/extractVocalMidi.py
+  s_753de4564f7040::t_0ef599b4123705 125
+.claude/skills/music-arch-advisor/SKILL.md
+  s_753de4564f7040::t_d4ec8a29370a56 31,33-43,46-47,55
+main.py
+  s_753de4564f7040::t_ab469ef955ceaf 221-229,236-245,247-255,283-288
+  s_753de4564f7040::t_1face06342b504 289
+support/vocaloidPenalty.py
+  s_753de4564f7040::t_1c3210a8354a9a 74
+  s_753de4564f7040::t_6233989162082c 1-73,75-126,128-158,160-163
+  s_753de4564f7040::t_61293efa997bb3 127
+  s_753de4564f7040::t_56a470ee95149c 159
+scripts/train.py
+  s_753de4564f7040::t_77c7fbce1ec311 19
+  s_753de4564f7040::t_ea59ccf5fac483 42-43
+  s_753de4564f7040::t_eb35c6264ad47c 93-97
+  s_753de4564f7040::t_bb494f3893a698 128-133,138
+support/vocalVocab.py
+  s_753de4564f7040::t_e92f8ddfbd4b5d 10-14,39-41
+  s_753de4564f7040::t_98fb1a5e457a6d 67,72,76,80,86-89
+  s_753de4564f7040::t_ecf7759ca756b5 107-108
+DECISIONS.md
+  s_753de4564f7040::t_dc2f98acff16b8 23,27-29
+  s_753de4564f7040::t_32013cce9955d3 33-41,47-48
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "96d4c4ac1d237b1f8c06ce6f0e221e16652342b8",
+  "prompts": {},
+  "sessions": {
+    "s_753de4564f7040": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2207cfea-d4c9-4ccc-97de-5d5c2346d784",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "alowhur-knowbe4 <alowhur@knowbe4.com>"
+    }
+  }
+}
