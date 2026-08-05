@@ -7,6 +7,11 @@ DURATION_BINS = [30, 60, 90, 120, 150, 180, 210, 240, 270, 300,
                  4320, 4800, 5760, 9601]  # 32 bins; last catches >=9601 ticks
 INTERVAL_RANGE = 12  # semitones, clamped
 
+# Bar-position tokens B1-B32 (cycle every 32 bars = 4 × 8-bar sections)
+BAR_CYCLE = 32
+# Default MIDI ticks per beat (480 is universal MIDI standard; VSQX also uses 480)
+DEFAULT_TICKS_PER_BEAT = 480
+
 PAD_IDX, SOS_IDX, EOS_IDX, UNK_IDX = 0, 1, 2, 3
 _SPECIALS = ['<pad>', '<sos>', '<eos>', '<unk>']
 
@@ -31,6 +36,9 @@ def _build_vocab_list():
     # r/d{bin} — rest of given duration
     for dur in DURATION_BINS:
         toks.append(f'r/d{dur}')
+    # B{n} — bar-position tokens (B1 = bar 1, B2 = bar 2, ..., B32 = bar 32, then cycle)
+    for n in range(1, BAR_CYCLE + 1):
+        toks.append(f'B{n}')
     return toks
 
 
@@ -56,22 +64,29 @@ class VocaloidVocab:
         return '<unk>'
 
 
-def tokens_from_notes(notes):
+def tokens_from_notes(notes, ticks_per_beat=DEFAULT_TICKS_PER_BEAT):
     """Convert (pitch, start_tick, duration) list to interval-encoded token strings.
 
     First note -> a{pitch}/d{bin}; subsequent notes -> i{+/-N}/d{bin};
     gaps between notes -> r/d{bin}.
+    Bar-position tokens B1-B{BAR_CYCLE} are inserted at each bar boundary.
     """
     if not notes:
         return []
+    ticks_per_bar = ticks_per_beat * 4  # assume 4/4 time
     tokens = []
     prev_pitch = None
     prev_end = None
+    prev_bar = -1
     for pitch, start, duration in notes:
         dur_bin = _quantize_duration(duration)
         if prev_end is not None and start > prev_end:
             rest_bin = _quantize_duration(start - prev_end)
             tokens.append(f'r/d{rest_bin}')
+        current_bar = start // ticks_per_bar
+        if current_bar != prev_bar:
+            tokens.append(f'B{(current_bar % BAR_CYCLE) + 1}')
+            prev_bar = current_bar
         if prev_pitch is None:
             tokens.append(f'a{pitch}/d{dur_bin}')
         else:
@@ -89,8 +104,8 @@ def notes_from_tokens(tokens, anchor_pitch=60):
     curr_pitch = anchor_pitch
     curr_tick = 0
     for tok in tokens:
-        if tok in _SPECIALS:
-            continue
+        if tok in _SPECIALS or tok.startswith('B'):
+            continue  # skip specials and bar-position markers
         try:
             kind, dur_str = tok.split('/')
             dur = int(dur_str[1:])

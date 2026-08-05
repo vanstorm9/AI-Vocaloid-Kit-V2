@@ -218,15 +218,41 @@ def _block_ngrams(logits, context, ngram_size):
 
 
 def generate_notes(model, vocab, seed_tokens, num_notes, dup_thresh, device,
-                   temperature=1.0, context_len=CONTEXT_LEN, no_repeat_ngram=4):
-    """Autoregressively sample note tokens from the decoder-only model."""
+                   temperature=1.0, context_len=CONTEXT_LEN, no_repeat_ngram=4,
+                   ticks_per_beat=480):
+    """Autoregressively sample note tokens from the decoder-only model.
+
+    Bar-position tokens (B1-B32) are injected automatically when accumulated
+    note/rest duration crosses a bar boundary, matching the training sequence format.
+    """
+    ticks_per_bar = ticks_per_beat * 4  # assume 4/4
+
     result = list(seed_tokens)
     dup_list = {}
 
     context = [vocab.encode(t) for t in seed_tokens]
     context = context[-context_len:]
 
+    # Accumulate ticks from seed so we start at the right bar position
+    cumulative_ticks = 0
+    for tok in seed_tokens:
+        if '/' in tok and not tok.startswith('B'):
+            try:
+                cumulative_ticks += int(tok.split('/')[1][1:])
+            except (ValueError, IndexError):
+                pass
+    current_bar = cumulative_ticks // ticks_per_bar
+
     for step in range(num_notes):
+        # Inject bar token when we cross into a new bar
+        new_bar = cumulative_ticks // ticks_per_bar
+        if new_bar != current_bar:
+            bar_tok = f'B{(new_bar % 32) + 1}'
+            bar_idx = vocab.encode(bar_tok)
+            result.append(bar_tok)
+            context.append(bar_idx)
+            current_bar = new_bar
+
         ctx = torch.tensor([context[-context_len:]], dtype=torch.long, device=device)
         with torch.no_grad():
             logits = model(ctx)         # (1, T, vocab)
@@ -253,6 +279,13 @@ def generate_notes(model, vocab, seed_tokens, num_notes, dup_thresh, device,
 
         result.append(tok)
         context.append(tok_idx)
+
+        # Accumulate duration for bar tracking
+        if '/' in tok and not tok.startswith('B'):
+            try:
+                cumulative_ticks += int(tok.split('/')[1][1:])
+            except (ValueError, IndexError):
+                pass
 
     return result
 

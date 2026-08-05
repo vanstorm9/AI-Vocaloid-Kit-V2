@@ -28,12 +28,23 @@ Identify the failure mode. Is it:
 - **Poor phrase structure** — no long-range coherence
 - **Overfitting** — train/val gap too large
 
-### Step 2 — Spawn a targeted research agent
+### Step 2 — Gather live research (run both in parallel)
 
-Launch a general-purpose agent. **Instruct it to actively search arXiv, Semantic Scholar, and GitHub** for recent papers on the diagnosed failure mode — don't rely only on training knowledge. Include in the prompt:
+**2a. Invoke the `top-ai-papers` skill** and ask it to surface any papers from the last 14 days relevant to: symbolic music generation, neural music modeling, music transformers, audio generation, score generation, or singing voice synthesis. Collect titles, abstracts, and links.
+
+**2b. Direct web search on arXiv and Semantic Scholar** — search for the diagnosed failure mode using queries like:
+- `site:arxiv.org <failure_mode> symbolic music generation` (e.g. `repetition symbolic music`, `hierarchical music transformer`, `pitch duration prediction`)
+- Semantic Scholar: `https://api.semanticscholar.org/graph/v1/paper/search?query=<failure_mode>+music+generation&fields=title,abstract,year,url&limit=10`
+
+Pull titles, abstracts, and links for papers published in the last 12 months that look applicable.
+
+### Step 3 — Spawn a targeted research agent
+
+Launch a general-purpose agent with:
 1. The diagnosed failure mode from Step 1
 2. Current constraints: ~16M param budget, 330k training sequences, interval-encoded MIDI tokens (a/i/r format), MPS training on Apple Silicon, decoder-only GPT baseline
-3. Request: survey state-of-the-art symbolic music generation architectures (Music Transformer, REMI/Pop Music Transformer, Compound Word Transformer, FIGARO, MusicBERT, hierarchical models, diffusion in symbolic space) and return ranked alternatives that specifically address the diagnosed failure mode
+3. The live papers from Step 2 (titles + abstracts)
+4. Request: synthesize established approaches (Music Transformer, REMI/Pop Music Transformer, Compound Word Transformer, FIGARO, MusicBERT, hierarchical models, diffusion in symbolic space) with any insights from live papers — return ranked alternatives that specifically address the diagnosed failure mode
 
 The agent should return for each recommendation:
 - What to adopt and why it fixes the specific failure mode
@@ -41,6 +52,7 @@ The agent should return for each recommendation:
 - Expected quality gain vs current approach
 - Whether it requires retraining from scratch or can be layered on top
 - A "Why now" field: why this specifically addresses the current failure mode (not generic praise)
+- If sourced from a live paper: the paper title and link
 
 After the skill completes, update `DECISIONS.md` with whatever was decided and the reasoning.
 

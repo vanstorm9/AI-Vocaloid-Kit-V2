@@ -16,6 +16,7 @@ import pandas as pd
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from support.vocalVocab import VocaloidVocab, initialize_model, PAD_IDX, SOS_IDX, EOS_IDX
+from support.vocaloidPenalty import VocaloidRulesPenalty
 
 SEED = 1234
 random.seed(SEED)
@@ -38,6 +39,8 @@ parser.add_argument('--hidDim', dest='hidDim', type=int, default=512)
 parser.add_argument('--nLayers', dest='nLayers', type=int, default=6)
 parser.add_argument('--nHeads', dest='nHeads', type=int, default=8)
 parser.add_argument('--pfDim', dest='pfDim', type=int, default=1024)
+parser.add_argument('--penaltyWeight', dest='penaltyWeight', type=float, default=0.3,
+                    help='Weight for Vocaloid rule penalty added to cross-entropy loss (0 = disabled)')
 args = parser.parse_args()
 
 os.makedirs(os.path.dirname(args.modelOutput) or '.', exist_ok=True)
@@ -87,6 +90,11 @@ print(f'Model has {sum(p.numel() for p in model.parameters() if p.requires_grad)
 criterion = nn.CrossEntropyLoss(ignore_index=PAD_IDX)
 optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
 
+penalty_fn = None
+if args.penaltyWeight > 0:
+    penalty_fn = VocaloidRulesPenalty(vocab).to(device)
+    print(f'Vocaloid penalty enabled (weight={args.penaltyWeight})')
+
 start_epoch = 0
 best_val_loss = float('inf')
 
@@ -117,14 +125,17 @@ def run_epoch(model, loader, optimizer, criterion, train):
             if train:
                 optimizer.zero_grad()
             output = model(src)                       # (B, T-1, vocab)
-            output = output.reshape(-1, len(vocab))   # (B*(T-1), vocab)
-            trg = trg.reshape(-1)                     # (B*(T-1),)
-            loss = criterion(output, trg)
+            ce_loss = criterion(output.reshape(-1, len(vocab)), trg.reshape(-1))
+            if train and penalty_fn is not None:
+                pen = penalty_fn(output)
+                loss = ce_loss + args.penaltyWeight * pen
+            else:
+                loss = ce_loss
             if train:
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
                 optimizer.step()
-            total_loss += loss.item()
+            total_loss += ce_loss.item()  # log CE only so val PPL is comparable
     return total_loss / len(loader)
 
 

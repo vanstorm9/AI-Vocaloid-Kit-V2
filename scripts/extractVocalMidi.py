@@ -122,7 +122,7 @@ def extract_and_tokenize(midi_path):
     notes = filter_pitch_range(notes)
     if not notes:
         return []
-    return tokens_from_notes(notes)
+    return tokens_from_notes(notes, ticks_per_beat=mid.ticks_per_beat)
 
 
 if __name__ == '__main__':

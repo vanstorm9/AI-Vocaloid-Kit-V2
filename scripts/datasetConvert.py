@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# python3 datasetConvert.py --vsqxDir All-songs/ --seqLen 64 --stride 8
+# python3 datasetConvert.py --vsqxDir All-songs/ --midiTokenDir /tmp/midi-tokens/ --seqLen 64 --stride 8
 
 import xml.dom.minidom
 import sys
@@ -15,25 +15,30 @@ from support.vocalVocab import VocaloidVocab, tokens_from_notes
 
 DATASET_SEED = 42
 
-parser = argparse.ArgumentParser(description='Convert VSQX/MIDI directory to a note-sequence CSV dataset')
-parser.add_argument('--vsqxDir', dest='vsqxDir', default='All-songs/',
-                    help='Directory containing VSQX files')
-parser.add_argument('--midiDir', dest='midiDir', default=None,
-                    help='Optional directory containing MIDI files (uses extractVocalMidi, recursive)')
-parser.add_argument('--midiTokenDir', dest='midiTokenDir', default=None,
-                    help='Optional directory of pre-extracted token .txt files (from extractVocalMidi.py --outputDir)')
-parser.add_argument('--seqLen', dest='seqLen', type=int, default=64,
-                    help='Number of tokens per sequence window')
-parser.add_argument('--stride', dest='stride', type=int, default=8,
-                    help='Window stride over each song')
-args = parser.parse_args()
 
-seqLen = args.seqLen
-stride = args.stride
-rootDir = args.vsqxDir
-vocab = VocaloidVocab()
+def _transpose_window(tokens, semitones):
+    """Shift anchor-token pitches by semitones; interval/rest/bar tokens are unchanged.
 
-assert os.path.exists(rootDir), f'vsqxDir not found: {rootDir}'
+    Returns a new token list, or None if any anchor pitch goes out of [0, 84].
+    """
+    if semitones == 0:
+        return tokens
+    result = []
+    for tok in tokens:
+        if tok.startswith('a') and '/' in tok:
+            parts = tok.split('/', 1)
+            try:
+                pitch = int(parts[0][1:])
+            except ValueError:
+                result.append(tok)
+                continue
+            new_pitch = pitch + semitones
+            if new_pitch < 0 or new_pitch > 84:
+                return None  # out of vocal range — discard this transposition
+            result.append(f'a{new_pitch}/{parts[1]}')
+        else:
+            result.append(tok)
+    return result
 
 
 def _get_note_attr(note, key):
@@ -81,64 +86,107 @@ def _notes_to_windows(note_list, seqLen, stride):
     return windows
 
 
-all_windows = []
+def main():
+    parser = argparse.ArgumentParser(description='Convert VSQX/MIDI directory to a note-sequence CSV dataset')
+    parser.add_argument('--vsqxDir', dest='vsqxDir', default='All-songs/',
+                        help='Directory containing VSQX files')
+    parser.add_argument('--midiDir', dest='midiDir', default=None,
+                        help='Optional directory containing MIDI files (uses extractVocalMidi, recursive)')
+    parser.add_argument('--midiTokenDir', dest='midiTokenDir', default=None,
+                        help='Optional directory of pre-extracted token .txt files (from extractVocalMidi.py --outputDir)')
+    parser.add_argument('--seqLen', dest='seqLen', type=int, default=64,
+                        help='Number of tokens per sequence window')
+    parser.add_argument('--stride', dest='stride', type=int, default=8,
+                        help='Window stride over each song')
+    parser.add_argument('--noAugTranspose', dest='noAugTranspose', action='store_true',
+                        help='Disable 12-key transposition augmentation on training set')
+    args = parser.parse_args()
 
-for i, fileName in enumerate(os.listdir(rootDir)):
-    if not fileName.lower().endswith('.vsqx'):
-        continue
-    print(i, ':', fileName)
-    vsqxPath = os.path.join(rootDir, fileName)
-    notes = _parse_vsqx_notes(vsqxPath)
-    if notes is None:
-        print('   Skipping', fileName)
-        continue
-    windows = _notes_to_windows(notes, seqLen, stride)
-    all_windows.extend(windows)
+    seqLen = args.seqLen
+    stride = args.stride
+    rootDir = args.vsqxDir
 
-if args.midiTokenDir and os.path.isdir(args.midiTokenDir):
-    token_files = [f for f in os.listdir(args.midiTokenDir) if f.endswith('.txt')]
-    print(f'Processing {len(token_files)} pre-extracted token files from {args.midiTokenDir}')
-    for j, fname in enumerate(token_files):
-        with open(os.path.join(args.midiTokenDir, fname)) as f:
-            tokens = f.read().strip().split('|')
-        for start in range(0, len(tokens) - seqLen + 1, stride):
-            window = tokens[start:start + seqLen]
-            if len(window) == seqLen:
-                all_windows.append('|'.join(window))
-        if j % 1000 == 0:
-            print(f'  token file {j}/{len(token_files)}')
-elif args.midiDir and os.path.isdir(args.midiDir):
-    from scripts.extractVocalMidi import extract_and_tokenize
-    midi_files = []
-    for dp, _ds, fs in os.walk(args.midiDir):
-        for f in fs:
-            if f.lower().endswith(('.mid', '.midi')):
-                midi_files.append(os.path.join(dp, f))
-    print(f'Processing {len(midi_files)} MIDI files from {args.midiDir}')
-    for j, midi_path in enumerate(midi_files):
-        tokens = extract_and_tokenize(midi_path)
-        if not tokens:
+    assert os.path.exists(rootDir), f'vsqxDir not found: {rootDir}'
+
+    all_windows = []
+
+    for i, fileName in enumerate(os.listdir(rootDir)):
+        if not fileName.lower().endswith('.vsqx'):
             continue
-        for start in range(0, len(tokens) - seqLen + 1, stride):
-            window = tokens[start:start + seqLen]
-            if len(window) == seqLen:
-                all_windows.append('|'.join(window))
-        if j % 500 == 0:
-            print(f'  MIDI {j}/{len(midi_files)}')
+        print(i, ':', fileName)
+        vsqxPath = os.path.join(rootDir, fileName)
+        notes = _parse_vsqx_notes(vsqxPath)
+        if notes is None:
+            print('   Skipping', fileName)
+            continue
+        windows = _notes_to_windows(notes, seqLen, stride)
+        all_windows.extend(windows)
 
-if not all_windows:
-    print('No sequences generated — check your input directories.')
-    sys.exit(1)
+    if args.midiTokenDir and os.path.isdir(args.midiTokenDir):
+        token_files = [f for f in os.listdir(args.midiTokenDir) if f.endswith('.txt')]
+        print(f'Processing {len(token_files)} pre-extracted token files from {args.midiTokenDir}')
+        for j, fname in enumerate(token_files):
+            with open(os.path.join(args.midiTokenDir, fname)) as f:
+                tokens = f.read().strip().split('|')
+            for start in range(0, len(tokens) - seqLen + 1, stride):
+                window = tokens[start:start + seqLen]
+                if len(window) == seqLen:
+                    all_windows.append('|'.join(window))
+            if j % 1000 == 0:
+                print(f'  token file {j}/{len(token_files)}')
+    elif args.midiDir and os.path.isdir(args.midiDir):
+        from scripts.extractVocalMidi import extract_and_tokenize
+        midi_files = []
+        for dp, _ds, fs in os.walk(args.midiDir):
+            for f in fs:
+                if f.lower().endswith(('.mid', '.midi')):
+                    midi_files.append(os.path.join(dp, f))
+        print(f'Processing {len(midi_files)} MIDI files from {args.midiDir}')
+        for j, midi_path in enumerate(midi_files):
+            tokens = extract_and_tokenize(midi_path)
+            if not tokens:
+                continue
+            for start in range(0, len(tokens) - seqLen + 1, stride):
+                window = tokens[start:start + seqLen]
+                if len(window) == seqLen:
+                    all_windows.append('|'.join(window))
+            if j % 500 == 0:
+                print(f'  MIDI {j}/{len(midi_files)}')
 
-df = pd.DataFrame({'seq': all_windows})
+    if not all_windows:
+        print('No sequences generated — check your input directories.')
+        sys.exit(1)
 
-out_dir = 'dataset/'
-os.makedirs(out_dir, exist_ok=True)
-df.to_csv(os.path.join(out_dir, 'entireNotes.csv'), index=False)
+    out_dir = 'dataset/'
+    os.makedirs(out_dir, exist_ok=True)
 
-rng = np.random.default_rng(DATASET_SEED)
-msk = rng.random(len(df)) < 0.8
-df[msk].to_csv(os.path.join(out_dir, 'trainNotes.csv'), index=False)
-df[~msk].to_csv(os.path.join(out_dir, 'valNotes.csv'), index=False)
+    # Split first so val stays at 1x (no leakage from augmented variants)
+    rng = np.random.default_rng(DATASET_SEED)
+    all_arr = np.array(all_windows)
+    msk = rng.random(len(all_arr)) < 0.8
+    train_windows = all_arr[msk].tolist()
+    val_windows = all_arr[~msk].tolist()
 
-print(f'Dataset written: {len(df)} windows ({msk.sum()} train, {(~msk).sum()} val)')
+    # 12-key transposition augmentation on training set only
+    if not args.noAugTranspose:
+        print(f'Augmenting {len(train_windows)} training windows with 12-key transposition...')
+        augmented = []
+        for win in train_windows:
+            toks = win.split('|')
+            for semitones in range(12):
+                transposed = _transpose_window(toks, semitones)
+                if transposed is not None:
+                    augmented.append('|'.join(transposed))
+        train_windows = augmented
+        print(f'  → {len(train_windows)} training windows after augmentation '
+              f'({len(train_windows) // max(1, len(all_arr[msk])):.1f}x)')
+
+    pd.DataFrame({'seq': train_windows}).to_csv(os.path.join(out_dir, 'trainNotes.csv'), index=False)
+    pd.DataFrame({'seq': val_windows}).to_csv(os.path.join(out_dir, 'valNotes.csv'), index=False)
+    pd.DataFrame({'seq': all_windows}).to_csv(os.path.join(out_dir, 'entireNotes.csv'), index=False)
+
+    print(f'Dataset written: {len(all_windows)} raw windows → {len(train_windows)} train, {len(val_windows)} val')
+
+
+if __name__ == '__main__':
+    main()
