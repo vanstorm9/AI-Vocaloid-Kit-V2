@@ -45,6 +45,8 @@ parser.add_argument('--theme', dest="theme", action="store", default='青春',
                     help='Lyric generation theme (Japanese text, e.g. 青春, 夜, 恋)')
 parser.add_argument('--llmModel', dest="llmModel", action="store", default='qwen2.5:7b',
                     help='Ollama model name for lyric generation')
+parser.add_argument('--noRepeatNgram', dest="noRepeatNgram", type=int, default=4,
+                    help='Block n-grams of this size from repeating during generation (0 to disable)')
 
 args = parser.parse_args()
 
@@ -55,6 +57,7 @@ setNum = args.numOfNotes
 temperature = args.temperature
 theme = args.theme
 llmModel = args.llmModel
+noRepeatNgram = args.noRepeatNgram
 
 mainList = []
 
@@ -172,15 +175,27 @@ def generateCSVFile(df):
 
 from support.vocalVocab import VocaloidVocab, initialize_model, SOS_IDX, EOS_IDX, PAD_IDX
 
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+if torch.cuda.is_available():
+    device = torch.device('cuda')
+elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+    device = torch.device('mps')
+else:
+    device = torch.device('cpu')
+
 vocab = VocaloidVocab()
 
 checkpoint = torch.load(modelPath, map_location=device, weights_only=False)
 if isinstance(checkpoint, dict) and 'model_state' in checkpoint:
-    model = initialize_model(len(vocab), device)
+    hp = checkpoint.get('hparams', {})
+    model = initialize_model(
+        len(vocab), device,
+        hid_dim=hp.get('hid_dim', 512),
+        n_layers=hp.get('n_layers', 6),
+        n_heads=hp.get('n_heads', 8),
+        pf_dim=hp.get('pf_dim', 1024),
+    )
     model.load_state_dict(checkpoint['model_state'])
 else:
-    # Legacy state_dict format
     print('Warning: loading legacy checkpoint format')
     model = initialize_model(len(vocab), device)
     model.load_state_dict(checkpoint)
@@ -191,8 +206,19 @@ print(f'The model has {songDecoder.count_parameters(model):,} trainable paramete
 CONTEXT_LEN = 64
 
 
+def _block_ngrams(logits, context, ngram_size):
+    """Set logits to -inf for any token that would repeat a seen n-gram."""
+    if ngram_size <= 0 or len(context) < ngram_size - 1:
+        return logits
+    prefix = tuple(context[-(ngram_size - 1):])
+    for i in range(len(context) - ngram_size + 1):
+        if tuple(context[i:i + ngram_size - 1]) == prefix:
+            logits[context[i + ngram_size - 1]] = float('-inf')
+    return logits
+
+
 def generate_notes(model, vocab, seed_tokens, num_notes, dup_thresh, device,
-                   temperature=1.0, context_len=CONTEXT_LEN):
+                   temperature=1.0, context_len=CONTEXT_LEN, no_repeat_ngram=4):
     """Autoregressively sample note tokens from the decoder-only model."""
     result = list(seed_tokens)
     dup_list = {}
@@ -205,6 +231,10 @@ def generate_notes(model, vocab, seed_tokens, num_notes, dup_thresh, device,
         with torch.no_grad():
             logits = model(ctx)         # (1, T, vocab)
         logits = logits[0, -1, :] / temperature
+
+        # n-gram blocking: prevent phrase-level loops
+        logits = _block_ngrams(logits, context, no_repeat_ngram)
+
         probs = torch.softmax(logits, dim=-1)
         tok_idx = torch.multinomial(probs, 1).item()
         tok = vocab.decode(tok_idx)
@@ -236,7 +266,7 @@ if len(mainList) <= 0:
     mainList = [_random.choice(anchor_tokens)]
 
 mainList = generate_notes(model, vocab, mainList, setNum, dupThresh, device,
-                          temperature=temperature)
+                          temperature=temperature, no_repeat_ngram=noRepeatNgram)
 print(mainList)
 
 

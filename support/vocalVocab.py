@@ -110,15 +110,16 @@ def notes_from_tokens(tokens, anchor_pitch=60):
     return notes
 
 
-def initialize_model(vocab_size, device):
+def initialize_model(vocab_size, device, hid_dim=512, n_layers=6, n_heads=8,
+                     pf_dim=1024, dropout=0.1, max_seq_len=512):
     from support.model import MusicTransformerGPT
     return MusicTransformerGPT(
         vocab_size=vocab_size,
-        hid_dim=256,
-        n_layers=4,
-        n_heads=8,
-        pf_dim=512,
-        dropout=0.1,
-        max_seq_len=512,
+        hid_dim=hid_dim,
+        n_layers=n_layers,
+        n_heads=n_heads,
+        pf_dim=pf_dim,
+        dropout=dropout,
+        max_seq_len=max_seq_len,
         device=device,
     ).to(device)

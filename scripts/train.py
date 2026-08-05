@@ -34,6 +34,10 @@ parser.add_argument('--epochs', dest='epochs', type=int, default=50)
 parser.add_argument('--seqLen', dest='seqLen', type=int, default=64)
 parser.add_argument('--batchSize', dest='batchSize', type=int, default=64)
 parser.add_argument('--lr', dest='lr', type=float, default=3e-4)
+parser.add_argument('--hidDim', dest='hidDim', type=int, default=512)
+parser.add_argument('--nLayers', dest='nLayers', type=int, default=6)
+parser.add_argument('--nHeads', dest='nHeads', type=int, default=8)
+parser.add_argument('--pfDim', dest='pfDim', type=int, default=1024)
 args = parser.parse_args()
 
 os.makedirs(os.path.dirname(args.modelOutput) or '.', exist_ok=True)
@@ -75,7 +79,9 @@ val_ds = NoteSequenceDataset(args.valCsv, vocab, args.seqLen)
 train_loader = DataLoader(train_ds, batch_size=args.batchSize, shuffle=True, drop_last=True)
 val_loader = DataLoader(val_ds, batch_size=args.batchSize, shuffle=False, drop_last=False)
 
-model = initialize_model(len(vocab), device)
+model = initialize_model(len(vocab), device,
+                        hid_dim=args.hidDim, n_layers=args.nLayers,
+                        n_heads=args.nHeads, pf_dim=args.pfDim)
 print(f'Model has {sum(p.numel() for p in model.parameters() if p.requires_grad):,} trainable parameters')
 
 criterion = nn.CrossEntropyLoss(ignore_index=PAD_IDX)
@@ -141,10 +147,10 @@ for epoch in range(start_epoch, start_epoch + args.epochs):
             'vocab': vocab.tok2idx,
             'hparams': {
                 'vocab_size': len(vocab),
-                'hid_dim': 256,
-                'n_layers': 4,
-                'n_heads': 8,
-                'pf_dim': 512,
+                'hid_dim': args.hidDim,
+                'n_layers': args.nLayers,
+                'n_heads': args.nHeads,
+                'pf_dim': args.pfDim,
                 'dropout': 0.1,
                 'max_seq_len': 512,
             },
