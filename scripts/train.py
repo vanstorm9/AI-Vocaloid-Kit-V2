@@ -5,8 +5,11 @@ import os
 import sys
 import math
 import time
+import json
 import random
 import argparse
+import subprocess
+from datetime import datetime
 
 import numpy as np
 import torch
@@ -25,6 +28,65 @@ torch.manual_seed(SEED)
 torch.cuda.manual_seed(SEED)
 torch.backends.cudnn.deterministic = True
 
+
+def _git_hash():
+    try:
+        return subprocess.check_output(
+            ['git', 'rev-parse', '--short', 'HEAD'], text=True
+        ).strip()
+    except Exception:
+        return 'unknown'
+
+
+def _write_registry(args, epoch, best_val_loss, train_ds, val_ds, vocab):
+    registry_dir = os.path.dirname(os.path.abspath(args.modelOutput))
+    registry_path = os.path.join(registry_dir, 'registry.json')
+    try:
+        with open(registry_path) as f:
+            registry = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        registry = []
+
+    entry = {
+        'version': args.version,
+        'note': args.versionNote,
+        'path': args.modelOutput,
+        'timestamp': datetime.utcnow().isoformat(timespec='seconds'),
+        'git_hash': _git_hash(),
+        'hparams': {
+            'vocab_size': len(vocab),
+            'hid_dim': args.hidDim,
+            'n_layers': args.nLayers,
+            'n_heads': args.nHeads,
+            'pf_dim': args.pfDim,
+        },
+        'training': {
+            'best_epoch': epoch + 1,
+            'best_val_loss': round(best_val_loss, 4),
+            'best_val_ppl': round(math.exp(best_val_loss), 3),
+            'total_epochs': args.epochs,
+            'penalty_weight': args.penaltyWeight,
+            'seq_len': args.seqLen,
+            'batch_size': args.batchSize,
+            'lr': args.lr,
+        },
+        'dataset': {
+            'train_csv': args.trainCsv,
+            'val_csv': args.valCsv,
+            'train_rows': len(train_ds),
+            'val_rows': len(val_ds),
+        },
+    }
+
+    # Upsert: replace existing entry with same version, then re-sort
+    registry = [e for e in registry if e.get('version') != args.version]
+    registry.append(entry)
+    registry.sort(key=lambda e: e.get('version', 0))
+
+    with open(registry_path, 'w') as f:
+        json.dump(registry, f, indent=2)
+
+
 parser = argparse.ArgumentParser(description='Train MusicTransformerGPT on note sequences')
 parser.add_argument('--trainCsv', dest='trainCsv', default='dataset/trainNotes.csv')
 parser.add_argument('--valCsv', dest='valCsv', default='dataset/valNotes.csv')
@@ -41,7 +103,16 @@ parser.add_argument('--nHeads', dest='nHeads', type=int, default=8)
 parser.add_argument('--pfDim', dest='pfDim', type=int, default=1024)
 parser.add_argument('--penaltyWeight', dest='penaltyWeight', type=float, default=0.3,
                     help='Weight for Vocaloid rule penalty added to cross-entropy loss (0 = disabled)')
+parser.add_argument('--version', dest='version', type=int, default=None,
+                    help='Experiment version number (e.g. 3). Enables registry logging and auto-naming.')
+parser.add_argument('--versionNote', dest='versionNote', type=str, default='',
+                    help='Short descriptor appended to the model filename (e.g. bar-tokens-12x-aug)')
 args = parser.parse_args()
+
+# Auto-name output file when --version is given and --modelOutput is at its default
+if args.version is not None and args.modelOutput == 'savedModels/music-model.pt':
+    slug = f'-{args.versionNote}' if args.versionNote else ''
+    args.modelOutput = f'savedModels/v{args.version}{slug}.pt'
 
 os.makedirs(os.path.dirname(args.modelOutput) or '.', exist_ok=True)
 
@@ -52,6 +123,10 @@ elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
 else:
     device = torch.device('cpu')
 print(f'Using device: {device}')
+if args.version is not None:
+    note_display = f' ({args.versionNote})' if args.versionNote else ''
+    print(f'Experiment v{args.version}{note_display} → {args.modelOutput}')
+
 vocab = VocaloidVocab()
 
 
@@ -156,6 +231,10 @@ for epoch in range(start_epoch, start_epoch + args.epochs):
             'epoch': epoch + 1,
             'best_val_loss': best_val_loss,
             'vocab': vocab.tok2idx,
+            'version': args.version,
+            'version_note': args.versionNote,
+            'timestamp': datetime.utcnow().isoformat(timespec='seconds'),
+            'git_hash': _git_hash(),
             'hparams': {
                 'vocab_size': len(vocab),
                 'hid_dim': args.hidDim,
@@ -165,7 +244,23 @@ for epoch in range(start_epoch, start_epoch + args.epochs):
                 'dropout': 0.1,
                 'max_seq_len': 512,
             },
+            'training_config': {
+                'penalty_weight': args.penaltyWeight,
+                'seq_len': args.seqLen,
+                'batch_size': args.batchSize,
+                'lr': args.lr,
+                'total_epochs': start_epoch + args.epochs,
+            },
+            'dataset_info': {
+                'train_csv': args.trainCsv,
+                'val_csv': args.valCsv,
+                'train_rows': len(train_ds),
+                'val_rows': len(val_ds),
+            },
         }, args.modelOutput)
+
+        if args.version is not None:
+            _write_registry(args, epoch, best_val_loss, train_ds, val_ds, vocab)
 
     print(f'Epoch {epoch+1:02} | {mins}m {secs}s | lr={lr_now:.2e}')
     print(f'  Train Loss: {train_loss:.3f} | Train PPL: {math.exp(train_loss):7.3f}')

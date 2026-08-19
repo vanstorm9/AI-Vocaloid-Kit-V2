@@ -1,0 +1,62 @@
+[
+  {
+    "version": 2,
+    "note": "16M-vocaloid-penalty",
+    "path": "savedModels/music-model-v2.pt",
+    "timestamp": "2026-08-04T00:00:00",
+    "git_hash": "96d4c4a",
+    "hparams": {
+      "vocab_size": 3556,
+      "hid_dim": 512,
+      "n_layers": 6,
+      "n_heads": 8,
+      "pf_dim": 1024
+    },
+    "training": {
+      "best_epoch": 50,
+      "best_val_loss": 0.7079,
+      "best_val_ppl": 2.03,
+      "total_epochs": 50,
+      "penalty_weight": 0.3,
+      "seq_len": 64,
+      "batch_size": 64,
+      "lr": 0.0003
+    },
+    "dataset": {
+      "train_csv": "dataset/trainNotes.csv",
+      "val_csv": "dataset/valNotes.csv",
+      "train_rows": 129846,
+      "val_rows": 2597
+    }
+  },
+  {
+    "version": 3,
+    "note": "bar-tokens-12x-aug",
+    "path": "savedModels/v3-bar-tokens-12x-aug.pt",
+    "timestamp": "2026-08-06T07:06:15",
+    "git_hash": "96d4c4a",
+    "hparams": {
+      "vocab_size": 3588,
+      "hid_dim": 512,
+      "n_layers": 6,
+      "n_heads": 8,
+      "pf_dim": 1024
+    },
+    "training": {
+      "best_epoch": 2,
+      "best_val_loss": 0.9587,
+      "best_val_ppl": 2.608,
+      "total_epochs": 50,
+      "penalty_weight": 0.3,
+      "seq_len": 64,
+      "batch_size": 64,
+      "lr": 0.0003
+    },
+    "dataset": {
+      "train_csv": "dataset/trainNotes.csv",
+      "val_csv": "dataset/valNotes.csv",
+      "train_rows": 4542666,
+      "val_rows": 94385
+    }
+  }
+]

@@ -187,8 +187,11 @@ vocab = VocaloidVocab()
 checkpoint = torch.load(modelPath, map_location=device, weights_only=False)
 if isinstance(checkpoint, dict) and 'model_state' in checkpoint:
     hp = checkpoint.get('hparams', {})
+    # Use vocab_size from checkpoint so old models load correctly even when
+    # VocaloidVocab has grown (e.g. after adding bar-position tokens)
+    ckpt_vocab_size = hp.get('vocab_size', len(vocab))
     model = initialize_model(
-        len(vocab), device,
+        ckpt_vocab_size, device,
         hid_dim=hp.get('hid_dim', 512),
         n_layers=hp.get('n_layers', 6),
         n_heads=hp.get('n_heads', 8),
@@ -457,26 +460,29 @@ from support.lyricGenerator import QwenLyricGenerator, count_morae
 lyric_gen = QwenLyricGenerator(model=llmModel, theme=theme)
 
 kanjiTxt = open(outputDir + 'kanji-lyrics.txt', 'w')
-hiraTxt = open(outputDir + 'hira-lyrics.txt', 'w')
+hiraTxt  = open(outputDir + 'hira-lyrics.txt', 'w')
+engTxt   = open(outputDir + 'english-lyrics.txt', 'w')
 
 hiraList = []
 
 for countNum in countList:
-    resStr = lyric_gen.generate_phrase(countNum)
-    resStr = resStr.replace('\n', '')
+    phrase = lyric_gen.generate_phrase(countNum)
 
-    hiraStr = jaconv.kata2hira(convertToHira(resStr, kks))
-    hiraTxt.write(hiraStr)
-    kanjiTxt.write(resStr)
+    kanjiTxt.write(phrase.kanji + '\n')
+    hiraTxt.write(phrase.hiragana + '\n')
+    if phrase.english:
+        engTxt.write(phrase.english + '\n')
 
-    tokenizerList = hiraTokenizer(hiraStr)
+    tokenizerList = hiraTokenizer(phrase.hiragana)
     hiraList.append(tokenizerList)
 
-    actual_morae = count_morae(resStr)
-    print(f'[{resStr}]  ({actual_morae}/{countNum} morae)')
+    actual_morae = count_morae(phrase.kanji or phrase.hiragana)
+    eng_display = f'  →  {phrase.english}' if phrase.english else ''
+    print(f'[{phrase.kanji}]  ({actual_morae}/{countNum} morae){eng_display}')
 
 hiraTxt.close()
 kanjiTxt.close()
+engTxt.close()
 
 
 """We try to generate the song again, but with the lyrics"""
