@@ -1,0 +1,43 @@
+main.py
+  s_753de4564f7040::t_f894e7cb948d02 190-192,194
+  s_753de4564f7040::t_ab0e2c78c0bf3b 463-464,469,471-474,476,479-481,485
+support/lyricGenerator.py
+  s_753de4564f7040::t_293acdf4352e13 70-72,76-77
+  s_753de4564f7040::t_d1a09877db7777 42-51
+  s_753de4564f7040::t_0c39496822c786 4-6,9-14
+  s_753de4564f7040::t_d0bc87e8710aca 129,132-134,141
+  s_753de4564f7040::t_4636c218cd7f55 75
+  s_753de4564f7040::t_a61bc8edc2c627 81,83-84,100-104
+  s_753de4564f7040::t_9f18d8f6b9360e 131,135-140
+  s_753de4564f7040::t_6c9cf72cfcf2a3 109-110,112,117,119,126,128,130,142,144-146,149,158,165-166,169-170
+  s_753de4564f7040::t_1f510fdb8a1387 15
+  s_753de4564f7040::t_99af865413e9b4 78
+scripts/listModels.py
+  s_753de4564f7040::t_a8077dec05ec84 1-98
+savedModels/registry.json
+  s_753de4564f7040::t_45400bc37c80dd 31-35,37-45,49-60
+  s_753de4564f7040::t_7b1c4dc0f08b8a 1-30,61-62
+  s_753de4564f7040::t_64f7fd856b50ac 36
+  s_753de4564f7040::t_982ccfea5d4eb0 46-48
+README.md
+  s_753de4564f7040::t_6b11bcd63e5125 79-80
+scripts/train.py
+  s_753de4564f7040::t_c48affb0e5c4b8 8,11-12,31-89,106-109,112-116,126-129,234-237,247-259,262-263
+  s_753de4564f7040::t_81f526731e7876 264
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "22b2a1735c7ee360a4ab895236ef8a7732fff719",
+  "prompts": {},
+  "sessions": {
+    "s_753de4564f7040": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2207cfea-d4c9-4ccc-97de-5d5c2346d784",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "alowhur-knowbe4 <alowhur@knowbe4.com>"
+    }
+  }
+}
